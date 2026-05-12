@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --cream-50:  #FEFBF4;
+  --cream-100: #FBF5E9;
+  --cream-200: #F5EAD4;
+  --cream-300: #E7D9BD;
+  --cream-400: #C9B894;
+  --cream-500: #9C8B68;
+  --cream-600: #6E5F44;
+  --cream-700: #4E4131;
+  --cream-800: #3A2418;
+  --cream-900: #271710;
+
+  --paper:      #FFFCF5;
+  --paper-ink:  #3A2418;
+
+  --fresa-50:  #FFEEF1;
+  --fresa-100: #FFD6DE;
+  --fresa-200: #FBB1BF;
+  --fresa-400: #F26583;
+  --fresa-500: #E8385A;
+  --fresa-600: #C82645;
+  --fresa-700: #A11A35;
+
+  --menta-50:  #E8F5EE;
+  --menta-100: #CFE9DA;
+  --menta-500: #5BB28E;
+  --menta-600: #3F9270;
+  --menta-700: #2D6F54;
+
+  --lavanda-50:  #F0EBFB;
+  --lavanda-100: #DDD0F3;
+  --lavanda-500: #8B6FD1;
+  --lavanda-600: #6E50B8;
+  --lavanda-700: #553D90;
+
+  --durazno-300: #F9C9A1;
+  --durazno-500: #F4A26A;
+  --bombon-300:  #F7D2DE;
+  --bombon-500:  #F2B5C6;
+
+  --bg:                var(--cream-100);
+  --bg-elev:           var(--paper);
+  --fg:                var(--cream-800);
+  --fg-muted:          var(--cream-600);
+  --fg-subtle:         var(--cream-500);
+  --border:            var(--cream-300);
+  --border-strong:     var(--cream-400);
+  --primary:           var(--fresa-500);
+  --primary-hov:       var(--fresa-600);
+  --primary-fg:        #FFFFFF;
+  --efectivo:          var(--menta-500);
+  --efectivo-bg:       var(--menta-50);
+  --transferencia:     var(--lavanda-500);
+  --transferencia-bg:  var(--lavanda-50);
+  --danger:            var(--fresa-600);
+
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body:    'Nunito', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  --t-display-xl: 700 56px/1.05 var(--font-display);
+  --t-display-lg: 700 40px/1.1  var(--font-display);
+  --t-display-md: 700 28px/1.2  var(--font-display);
+  --t-h1:         700 24px/1.25 var(--font-display);
+  --t-h2:         700 20px/1.3  var(--font-display);
+  --t-body-lg:    500 18px/1.5  var(--font-body);
+  --t-body:       400 16px/1.55 var(--font-body);
+  --t-body-sm:    500 14px/1.5  var(--font-body);
+  --t-caption:    600 12px/1.4  var(--font-body);
+  --t-mono:       500 16px/1.4  var(--font-mono);
+
+  --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px;  --sp-8: 32px; --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px;
+
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   22px;
+  --r-pill: 999px;
+
+  --shadow-1:     0 1px 0 rgba(58,36,24,.06), 0 1px 2px rgba(58,36,24,.06);
+  --shadow-2:     0 2px 0 rgba(58,36,24,.06), 0 8px 20px -8px rgba(58,36,24,.18);
+  --shadow-3:     0 3px 0 rgba(58,36,24,.08), 0 18px 36px -10px rgba(58,36,24,.22);
+  --shadow-press: inset 0 2px 0 rgba(58,36,24,.10);
+  --ring-focus:   0 0 0 3px rgba(232,56,90,.28);
+
+  --ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-boing:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 360ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1 { font: var(--t-h1); margin: 0; }
+h2 { font: var(--t-h2); margin: 0; }
+.body-lg  { font: var(--t-body-lg); }
+.body-sm  { font: var(--t-body-sm); color: var(--fg-muted); }
+.caption  { font: var(--t-caption); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }
+.mono     { font: var(--t-mono); font-variant-numeric: tabular-nums; }
