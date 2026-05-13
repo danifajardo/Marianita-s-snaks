@@ -121,12 +121,12 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
                           <span className="avatar">{person.initial}</span>
                           <div>
                             <div className="persona-name">{person.name}</div>
-                            <div className="persona-area">{person.phone}</div>
+                            <div className="persona-area">{t('panel.count', { count })} · {person.phone}</div>
                           </div>
                           {i === 0 && <span className="rank-badge">#1</span>}
                         </div>
                       </td>
-                      <td className="body-sm">{t('panel.count', { count })}</td>
+                      <td className="body-sm deudas-count">{t('panel.count', { count })}</td>
                       <td className="mono amt">{formatCOP(total)}</td>
                     </tr>
                   )
