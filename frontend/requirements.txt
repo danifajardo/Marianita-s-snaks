@@ -1,0 +1,32 @@
+# ── Entorno ────────────────────────────────────────────────────────────────────
+Node.js >= 18
+npm >= 9
+
+# ── Dependencias de producción ─────────────────────────────────────────────────
+react@^19.2.6
+react-dom@^19.2.6
+i18next@^26.1.0
+react-i18next@^17.0.7
+lucide@^1.14.0
+
+# ── Herramientas de desarrollo ─────────────────────────────────────────────────
+vite@^8.0.12
+@vitejs/plugin-react@^6.0.1
+eslint@^10.3.0
+
+# ── Testing ────────────────────────────────────────────────────────────────────
+vitest@^4.1.6
+@vitest/coverage-v8@^4.1.6
+@testing-library/react@^16.3.2
+@testing-library/jest-dom@^6.9.1
+@testing-library/user-event@^14.6.1
+jsdom@^29.1.1
+
+# ── Instalación ────────────────────────────────────────────────────────────────
+# npm install
+#
+# ── Scripts disponibles ────────────────────────────────────────────────────────
+# npm run dev       → servidor de desarrollo
+# npm run build     → build de producción
+# npm run test:run  → ejecutar tests
+# npm run coverage  → reporte de cobertura
