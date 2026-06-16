@@ -66,6 +66,20 @@ export const initialPurchases = []
 export const formatCOP = (n) =>
   '$ ' + n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
+// Método "efectivo" de una compra: una compra fiada (debt) ya pagada cuenta según
+// el método con que se saldó (paidMethod); si sigue pendiente, cuenta como 'debt'.
+export const effectiveMethod = (c) =>
+  c.method === 'debt' && c.paidMethod ? c.paidMethod : c.method
+
+// Total de una línea de compra. Usa el precio congelado al momento de la compra
+// (unitPrice); si no existe (compras viejas), cae al precio actual del producto.
+export const lineTotal = (c, products) => {
+  const unit = Number(c.unitPrice) || 0
+  if (unit > 0) return unit * c.quantity
+  const p = products.find(x => x.id === c.productId)
+  return p ? p.price * c.quantity : 0
+}
+
 const LOCALE_MAP = { en: 'en-US', es: 'es-CO', ko: 'ko-KR' }
 
 export const relativeDate = (iso, t, lang = 'es') => {

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { createIcons, icons } from 'lucide'
 import { useTranslation } from 'react-i18next'
-import { formatCOP } from '../data'
+import { formatCOP, effectiveMethod, lineTotal } from '../data'
 
 export default function MarianitaPanel({ purchases, products, persons, onToggleProduct, onEditPrice, onAddProduct }) {
   const { t } = useTranslation()
@@ -13,7 +13,7 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
   const [newName, setNewName]     = useState('')
   const [newPrice, setNewPrice]   = useState('')
 
-  useEffect(() => { createIcons({ icons }) }, [range, tab, editingId, isAdding, products])
+  useEffect(() => { createIcons({ icons }) }, [range, tab, editingId, isAdding, products, purchases])
 
   const inRange = (iso) => {
     const days = (new Date() - new Date(iso)) / (1000 * 60 * 60 * 24)
@@ -24,14 +24,21 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
   }
 
   const filtered       = purchases.filter(c => inRange(c.date))
-  const purchaseTotal  = (c) => { const p = products.find(x => x.id === c.productId); return p ? p.price * c.quantity : 0 }
+  const purchaseTotal  = (c) => lineTotal(c, products)
+  // Totales por método efectivo: una deuda saldada en efectivo suma a "efectivo", etc.
+  const totalByMethod  = (m) => filtered.filter(c => effectiveMethod(c) === m).reduce((a, c) => a + purchaseTotal(c), 0)
   const grandTotal     = filtered.reduce((a, c) => a + purchaseTotal(c), 0)
-  const cashTotal      = filtered.filter(c => c.method === 'cash').reduce((a, c) => a + purchaseTotal(c), 0)
-  const transferTotal  = filtered.filter(c => c.method === 'transfer').reduce((a, c) => a + purchaseTotal(c), 0)
+  const cashTotal      = totalByMethod('cash')
+  const transferTotal  = totalByMethod('transfer')
+  const debtTotal      = totalByMethod('debt')
 
+  // "Quién debe" solo cuenta lo fiado pendiente (effectiveMethod === 'debt');
+  // lo pagado (efectivo, transferencia o deuda ya saldada) no aparece.
   const debts = useMemo(() => {
     const amountMap = {}
-    filtered.forEach(c => { amountMap[c.personId] = (amountMap[c.personId] || 0) + purchaseTotal(c) })
+    filtered.filter(c => effectiveMethod(c) === 'debt').forEach(c => {
+      amountMap[c.personId] = (amountMap[c.personId] || 0) + purchaseTotal(c)
+    })
     return persons
       .map(p => ({ person: p, total: amountMap[p.id] || 0 }))
       .filter(x => x.total > 0)
@@ -83,6 +90,10 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
           <span className="caption"><span className="dot lavanda"></span> {t('panel.transfer')}</span>
           <div className="total-amt">{formatCOP(transferTotal)}</div>
         </div>
+        <div className="total-card">
+          <span className="caption"><span className="dot durazno"></span> {t('panel.debt')}</span>
+          <div className="total-amt">{formatCOP(debtTotal)}</div>
+        </div>
       </div>
 
       <div className="tabs">
@@ -113,7 +124,7 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
               </thead>
               <tbody>
                 {debts.map(({ person, total }, i) => {
-                  const count = filtered.filter(c => c.personId === person.id).length
+                  const count = filtered.filter(c => c.personId === person.id && effectiveMethod(c) === 'debt').length
                   return (
                     <tr key={person.id}>
                       <td>

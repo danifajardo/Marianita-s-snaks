@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react'
 import { createIcons } from 'lucide'
 import * as icons from 'lucide'
 import { useTranslation } from 'react-i18next'
+import { verificarPin } from './api'
 
 const LANGS = [
   { code: 'en', label: 'EN' },
   { code: 'es', label: 'ES' },
   { code: 'ko', label: '한' },
 ]
+
+// Ícono de lucide por método de pago
+const METHOD_ICON = { cash: 'banknote', transfer: 'arrow-right-left', debt: 'hand-coins' }
 
 export function Header({ title, person, onChangeUser }) {
   const { i18n } = useTranslation()
@@ -74,8 +78,8 @@ export function MetodoBadge({ method }) {
   useEffect(() => { createIcons({ icons }) })
   return (
     <span className={'badge method-' + method}>
-      <i data-lucide={method === 'cash' ? 'banknote' : 'arrow-right-left'}></i>
-      {method === 'cash' ? t('register.cash') : t('register.transfer')}
+      <i data-lucide={METHOD_ICON[method] || 'banknote'}></i>
+      {t('register.' + method)}
     </span>
   )
 }
@@ -87,10 +91,12 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
   const [name, setName]           = useState('')
   const [phone, setPhone]         = useState('')
   const [error, setError]         = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [confirmPerson, setConfirmPerson] = useState(null)
 
   useEffect(() => { createIcons({ icons }) })
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const cleanId    = employeeId.trim()
     const cleanName  = name.trim()
     const cleanPhone = phone.trim()
@@ -98,21 +104,43 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
     if (!cleanName)                                         return setError(t('picker.errName'))
     if (!cleanPhone || cleanPhone.length < 10)              return setError(t('picker.errPhone'))
     if (persons.find(p => p.employeeId === cleanId))        return setError(t('picker.errIdTaken'))
-    onRegister({ employeeId: cleanId, name: cleanName, phone: cleanPhone })
-    onClose()
+    try {
+      setSubmitting(true)
+      await onRegister({ employeeId: cleanId, name: cleanName, phone: cleanPhone })
+      onClose()
+    } catch (err) {
+      setError(err?.message || t('picker.errGeneric'))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <h2>{mode === 'list' ? t('picker.whoAreYou') : t('picker.registerTitle')}</h2>
-          <button className="icon-btn" onClick={onClose}>
+          <h2>{confirmPerson ? t('picker.confirmIdentity') : mode === 'list' ? t('picker.whoAreYou') : t('picker.registerTitle')}</h2>
+          <button className="icon-btn" onClick={confirmPerson ? () => setConfirmPerson(null) : onClose}>
             <i data-lucide="x"></i>
           </button>
         </div>
 
-        {mode === 'list' ? (
+        {confirmPerson ? (
+          <div className="confirm-identity">
+            <span className="avatar lg">{confirmPerson.initial}</span>
+            <h2 className="confirm-identity-q">{t('picker.areYou', { name: confirmPerson.name })}</h2>
+            <button
+              className="btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => { onChange(confirmPerson.id); onClose() }}
+            >
+              {t('picker.yesItsMe')}
+            </button>
+            <button className="btn-ghost" onClick={() => setConfirmPerson(null)}>
+              {t('picker.notMe')}
+            </button>
+          </div>
+        ) : mode === 'list' ? (
           <>
             <div className="persona-list">
               {persons.length === 0 && (
@@ -124,7 +152,7 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
                 <button
                   key={p.id}
                   className={'persona-row ' + (value === p.id ? 'sel' : '')}
-                  onClick={() => { onChange(p.id); onClose() }}
+                  onClick={() => setConfirmPerson(p)}
                 >
                   <span className="avatar lg">{p.initial}</span>
                   <span className="persona-meta">
@@ -175,8 +203,8 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
               />
             </div>
             {error && <p className="pin-msg">{error}</p>}
-            <button className="btn-primary" onClick={handleRegister} style={{ width: '100%' }}>
-              {t('picker.registerBtn')}
+            <button className="btn-primary" onClick={handleRegister} disabled={submitting} style={{ width: '100%' }}>
+              {submitting ? t('picker.registering') : t('picker.registerBtn')}
             </button>
             <button className="btn-ghost" onClick={() => { setMode('list'); setError('') }}>
               {t('picker.back')}
@@ -192,10 +220,10 @@ export function PinGate({ onSuccess }) {
   const { t } = useTranslation()
   const [pin, setPin]     = useState('')
   const [error, setError] = useState(false)
-  const CORRECT_PIN = import.meta.env.VITE_PIN_MARIANITA
 
-  const verify = () => {
-    if (pin === CORRECT_PIN) {
+  const verify = async () => {
+    const ok = await verificarPin(pin)
+    if (ok) {
       onSuccess()
     } else {
       setError(true)

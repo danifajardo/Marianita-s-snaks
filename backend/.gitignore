@@ -1,0 +1,3 @@
+# Específico de cada máquina (scriptId / credenciales de clasp)
+.clasp.json
+.clasprc.json

@@ -10,6 +10,8 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
   const [isConfirmed, setIsConfirmed] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [saveError, setSaveError]     = useState('')
 
   useEffect(() => { createIcons({ icons }) }, [cart, method, isConfirmed, isModalOpen, searchQuery])
 
@@ -49,12 +51,21 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
     })
   }
 
-  const confirm = () => {
-    setIsModalOpen(false)
+  const confirm = async () => {
+    if (saving) return
     const items = Object.entries(cart).map(([productId, quantity]) => ({ productId, quantity }))
-    onConfirm({ personId: person.id, method, items, total })
-    setIsConfirmed(true)
-    setTimeout(() => { setCart({}); setIsConfirmed(false) }, 2400)
+    try {
+      setSaving(true)
+      setSaveError('')
+      await onConfirm({ personId: person.id, method, items, total })
+      setIsModalOpen(false)
+      setIsConfirmed(true)
+      setTimeout(() => { setCart({}); setIsConfirmed(false) }, 2400)
+    } catch (err) {
+      setSaveError(err?.message || t('register.saveError'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (isConfirmed) {
@@ -65,7 +76,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
           <h1>{t('register.done')}</h1>
           <p className="confirm-msg">{t('register.recorded', { name: person.name.split(' ')[0] })}</p>
           <p className="confirm-amt">
-            {formatCOP(total)} · {method === 'cash' ? t('register.cash').toLowerCase() : t('register.transfer').toLowerCase()}
+            {formatCOP(total)} · {t('register.' + method).toLowerCase()}
           </p>
         </div>
       </div>
@@ -135,6 +146,9 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
               <button className={method === 'transfer' ? 'on' : ''} onClick={() => setMethod('transfer')}>
                 <span className="dot lavanda"></span>{t('register.transfer')}
               </button>
+              <button className={method === 'debt' ? 'on' : ''} onClick={() => setMethod('debt')}>
+                <span className="dot durazno"></span>{t('register.debt')}
+              </button>
             </div>
           </div>
           <button className="btn-primary big" onClick={() => setIsModalOpen(true)}>
@@ -167,8 +181,8 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
               </ul>
 
               <div className="confirm-modal-footer">
-                <span className={'badge ' + (method === 'cash' ? 'method-cash' : 'method-transfer')}>
-                  {method === 'cash' ? t('register.cash') : t('register.transfer')}
+                <span className={'badge method-' + method}>
+                  {t('register.' + method)}
                 </span>
                 <div className="confirm-modal-total">
                   <span className="caption">{t('register.total')}</span>
@@ -177,11 +191,12 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
               </div>
             </div>
 
+            {saveError && <p className="pin-msg" style={{ padding: '0 20px' }}>{saveError}</p>}
             <div className="confirm-modal-actions">
-              <button className="btn-primary" style={{ flex: 1 }} onClick={confirm}>
-                {t('register.confirmBtn')}
+              <button className="btn-primary" style={{ flex: 1 }} onClick={confirm} disabled={saving}>
+                {saving ? t('register.saving') : t('register.confirmBtn')}
               </button>
-              <button className="btn-ghost" onClick={() => setIsModalOpen(false)}>
+              <button className="btn-ghost" onClick={() => setIsModalOpen(false)} disabled={saving}>
                 {t('register.review')}
               </button>
             </div>

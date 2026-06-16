@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Header, BottomNav, MetodoBadge, PersonPicker, PinGate } from '../Components'
+import * as api from '../api'
 
 vi.mock('lucide')
 vi.mock('react-i18next')
+vi.mock('../api')
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 
@@ -87,9 +89,16 @@ describe('MetodoBadge', () => {
     expect(screen.getByText('Transfer')).toBeInTheDocument()
   })
 
+  it('muestra "On tab" cuando el método es debt (fiado)', () => {
+    render(<MetodoBadge method="debt" />)
+    expect(screen.getByText('On tab')).toBeInTheDocument()
+  })
+
   it('aplica la clase correcta según el método', () => {
     const { container } = render(<MetodoBadge method="cash" />)
     expect(container.firstChild).toHaveClass('method-cash')
+    const { container: c2 } = render(<MetodoBadge method="debt" />)
+    expect(c2.firstChild).toHaveClass('method-debt')
   })
 })
 
@@ -129,15 +138,30 @@ describe('PersonPicker', () => {
     expect(screen.getByText('#001').closest('button')).toHaveClass('sel')
   })
 
-  it('llama a onChange y onClose al seleccionar una persona', async () => {
+  it('al seleccionar una persona pide confirmación antes de elegirla', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     const onClose = vi.fn()
     const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A' }]
     render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onClose={onClose} />)
     await user.click(screen.getByText('#001'))
+    // todavía no selecciona: aparece la confirmación
+    expect(screen.getByText('Are you Ana?')).toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+    await user.click(screen.getByText("Yes, it's me"))
     expect(onChange).toHaveBeenCalledWith('u-1')
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('si cancela la confirmación, vuelve a la lista sin seleccionar', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A' }]
+    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} />)
+    await user.click(screen.getByText('#001'))
+    await user.click(screen.getByText('No, go back'))
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByText('#001')).toBeInTheDocument()
   })
 
   it('muestra el formulario de registro al hacer clic en "I\'m new"', async () => {
@@ -219,6 +243,10 @@ describe('PersonPicker', () => {
 // ─── PinGate ──────────────────────────────────────────────────────────────────
 
 describe('PinGate', () => {
+  beforeEach(() => {
+    vi.mocked(api.verificarPin).mockImplementation(pin => Promise.resolve(pin === '1234'))
+  })
+
   it('muestra el campo de PIN y el botón de entrar', () => {
     render(<PinGate onSuccess={vi.fn()} />)
     expect(screen.getByPlaceholderText('• • • •')).toBeInTheDocument()
@@ -231,7 +259,7 @@ describe('PinGate', () => {
     render(<PinGate onSuccess={onSuccess} />)
     await user.type(screen.getByPlaceholderText('• • • •'), '1234')
     await user.click(screen.getByText('Enter'))
-    expect(onSuccess).toHaveBeenCalledOnce()
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
   it('no llama a onSuccess con PIN incorrecto', async () => {
@@ -240,7 +268,7 @@ describe('PinGate', () => {
     render(<PinGate onSuccess={onSuccess} />)
     await user.type(screen.getByPlaceholderText('• • • •'), '0000')
     await user.click(screen.getByText('Enter'))
-    expect(onSuccess).not.toHaveBeenCalled()
+    await waitFor(() => expect(onSuccess).not.toHaveBeenCalled())
   })
 
   it('muestra el mensaje de error con PIN incorrecto', async () => {
@@ -248,7 +276,7 @@ describe('PinGate', () => {
     render(<PinGate onSuccess={vi.fn()} />)
     await user.type(screen.getByPlaceholderText('• • • •'), '0000')
     await user.click(screen.getByText('Enter'))
-    expect(screen.getByText('Incorrect PIN, try again')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Incorrect PIN, try again')).toBeInTheDocument())
   })
 
   it('limpia el campo de PIN tras un intento fallido', async () => {
@@ -256,7 +284,7 @@ describe('PinGate', () => {
     render(<PinGate onSuccess={vi.fn()} />)
     await user.type(screen.getByPlaceholderText('• • • •'), '9999')
     await user.click(screen.getByText('Enter'))
-    expect(screen.getByPlaceholderText('• • • •')).toHaveValue('')
+    await waitFor(() => expect(screen.getByPlaceholderText('• • • •')).toHaveValue(''))
   })
 
   it('también verifica el PIN al presionar Enter en el teclado', async () => {
@@ -264,6 +292,6 @@ describe('PinGate', () => {
     const onSuccess = vi.fn()
     render(<PinGate onSuccess={onSuccess} />)
     await user.type(screen.getByPlaceholderText('• • • •'), '1234{Enter}')
-    expect(onSuccess).toHaveBeenCalledOnce()
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 })

@@ -55,14 +55,26 @@ describe('MyPurchases — listado de compras', () => {
     expect(screen.getByText('Nothing yet')).toBeInTheDocument()
   })
 
-  it('calcula correctamente el total de las compras', () => {
+  it('usa el precio congelado (unitPrice) de la compra, no el precio actual del producto', () => {
+    // p1 hoy cuesta 2000, pero se fió a 1500 → debe usar 1500
+    const purchases = [{
+      id: 'c1', personId: 'u-1', productId: 'p1', quantity: 2,
+      method: 'debt', unitPrice: 1500, date: new Date().toISOString(),
+    }]
+    render(<MyPurchases purchases={purchases} products={products} person={person} onSettle={vi.fn()} />)
+    const balanceCard = screen.getByText('You owe Marianita').closest('.balance-card')
+    expect(within(balanceCard).getByText('$ 3.000')).toBeInTheDocument()
+  })
+
+  it('el saldo "You owe" suma solo lo fiado (debe), no lo ya pagado', () => {
     const purchases = [
-      mkPurchase('c1', 'p1', 'cash'),    // 2000
-      mkPurchase('c2', 'p2', 'transfer'), // 2800
+      mkPurchase('c1', 'p1', 'debt'),     // 2000 debe
+      mkPurchase('c2', 'p2', 'cash'),     // 2800 pagado → no cuenta
+      mkPurchase('c3', 'p1', 'debt'),     // 2000 debe
     ]
     render(<MyPurchases purchases={purchases} products={products} person={person} />)
     const balanceCard = screen.getByText('You owe Marianita').closest('.balance-card')
-    expect(within(balanceCard).getByText('$ 4.800')).toBeInTheDocument()
+    expect(within(balanceCard).getByText('$ 4.000')).toBeInTheDocument()
   })
 
   it('muestra el emoji del producto en cada fila', () => {
@@ -128,12 +140,29 @@ describe('MyPurchases — filtros', () => {
     expect(screen.getByText('Doritos')).toBeInTheDocument()
   })
 
-  it('actualiza el total al filtrar por efectivo', async () => {
+  it('el filtro "On tab" muestra solo las compras fiadas', async () => {
     const user = userEvent.setup()
-    render(<MyPurchases purchases={purchases} products={products} person={person} />)
+    const conDeuda = [
+      mkPurchase('c1', 'p1', 'debt'), // Chokis fiado
+      mkPurchase('c2', 'p2', 'cash'), // Doritos pagado
+    ]
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} />)
+    await user.click(filterBtn('On tab'))
+    expect(screen.getByText('Chokis')).toBeInTheDocument()
+    expect(screen.queryByText('Doritos')).not.toBeInTheDocument()
+  })
+
+  it('el saldo no cambia al filtrar el historial (siempre es la deuda)', async () => {
+    const user = userEvent.setup()
+    const conDeuda = [
+      mkPurchase('c1', 'p1', 'debt'), // 2000 debe
+      mkPurchase('c2', 'p2', 'cash'), // 2800 pagado
+    ]
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} />)
+    const balance = () => within(screen.getByText('You owe Marianita').closest('.balance-card'))
+    expect(balance().getByText('$ 2.000')).toBeInTheDocument()
     await user.click(filterBtn('Cash'))
-    const balanceCard = screen.getByText('You owe Marianita').closest('.balance-card')
-    expect(within(balanceCard).getByText('$ 2.000')).toBeInTheDocument()
+    expect(balance().getByText('$ 2.000')).toBeInTheDocument()
   })
 
   it('marca el filtro activo con la clase "on"', async () => {
@@ -154,5 +183,60 @@ describe('MyPurchases — encabezado', () => {
   it('muestra la leyenda "You owe Marianita"', () => {
     render(<MyPurchases purchases={[]} products={products} person={person} />)
     expect(screen.getByText('You owe Marianita')).toBeInTheDocument()
+  })
+})
+
+describe('MyPurchases — pagar', () => {
+  const conDeuda = [
+    mkPurchase('c1', 'p1', 'debt'), // Chokis 2000
+    mkPurchase('c2', 'p2', 'debt'), // Doritos 2800
+  ]
+
+  it('no muestra el botón de pagar si no hay deuda', () => {
+    render(<MyPurchases purchases={[mkPurchase('c1', 'p1', 'cash')]} products={products} person={person} onSettle={vi.fn()} />)
+    expect(screen.queryByText('Pay what I owe')).not.toBeInTheDocument()
+  })
+
+  it('abre el modal de pago con las compras fiadas', async () => {
+    const user = userEvent.setup()
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} onSettle={vi.fn()} />)
+    await user.click(screen.getByText('Pay what I owe'))
+    const modal = screen.getByText('Pay your tab').closest('.modal')
+    expect(within(modal).getByText('Chokis')).toBeInTheDocument()
+    expect(within(modal).getByText('Doritos')).toBeInTheDocument()
+  })
+
+  it('elegir un método pide confirmación antes de llamar a onSettle', async () => {
+    const user = userEvent.setup()
+    const onSettle = vi.fn().mockResolvedValue([])
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} onSettle={onSettle} />)
+    await user.click(screen.getByText('Pay what I owe'))
+    const payAll = screen.getByText(/Pay all/).closest('.pay-all')
+    await user.click(within(payAll).getByRole('button', { name: 'Cash' }))
+    // aún no llama: aparece la confirmación
+    expect(onSettle).not.toHaveBeenCalled()
+    expect(screen.getByText('Yes, pay')).toBeInTheDocument()
+  })
+
+  it('"Pagar todo" confirmado llama a onSettle con todos los ids y el método', async () => {
+    const user = userEvent.setup()
+    const onSettle = vi.fn().mockResolvedValue([])
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} onSettle={onSettle} />)
+    await user.click(screen.getByText('Pay what I owe'))
+    const payAll = screen.getByText(/Pay all/).closest('.pay-all')
+    await user.click(within(payAll).getByRole('button', { name: 'Cash' }))
+    await user.click(screen.getByText('Yes, pay'))
+    expect(onSettle).toHaveBeenCalledWith(['c1', 'c2'], 'cash')
+  })
+
+  it('pagar una sola compra confirmada llama a onSettle con ese id', async () => {
+    const user = userEvent.setup()
+    const onSettle = vi.fn().mockResolvedValue([])
+    render(<MyPurchases purchases={conDeuda} products={products} person={person} onSettle={onSettle} />)
+    await user.click(screen.getByText('Pay what I owe'))
+    const firstRow = document.querySelectorAll('.settle-row')[0]
+    await user.click(within(firstRow).getByRole('button', { name: 'Transfer' }))
+    await user.click(screen.getByText('Yes, pay'))
+    expect(onSettle).toHaveBeenCalledWith(['c1'], 'transfer')
   })
 })

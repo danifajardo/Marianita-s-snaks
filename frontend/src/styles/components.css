@@ -237,9 +237,27 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
 }
 .seg button.on { background: var(--paper); color: var(--fg); box-shadow: var(--shadow-1); }
 
+.view-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 80px 20px; color: var(--fg-muted);
+}
+.spinner {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 3px solid var(--cream-200); border-top-color: var(--primary);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.confirm-identity {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 16px 20px 28px; text-align: center;
+}
+.confirm-identity-q { margin: 4px 0 0; font: var(--t-h1); }
+
 .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
 .dot.menta   { background: var(--menta-500); }
 .dot.lavanda { background: var(--lavanda-500); }
+.dot.durazno { background: var(--durazno-500); }
 
 .seg-filter { display: inline-flex; align-self: flex-start; margin-bottom: 16px; }
 .seg-filter.sm button { padding: 8px 12px; font-size: 13px; }
@@ -346,6 +364,7 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
 .badge svg { width: 12px; height: 12px; }
 .method-cash     { background: var(--menta-50);   color: var(--menta-700); }
 .method-transfer { background: var(--lavanda-50); color: var(--lavanda-700); }
+.method-debt     { background: var(--durazno-300); color: var(--cream-800); }
 
 /* ---------- Empty ---------- */
 .empty       { text-align: center; padding: 60px 20px; }
@@ -357,10 +376,10 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
 /* ---------- Panel Marianita ---------- */
 .totales-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
   gap: 14px; margin-bottom: 24px;
 }
-@media (max-width: 720px) { .totales-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .totales-grid { grid-template-columns: 1fr 1fr; } }
 
 .total-card {
   background: var(--paper);
@@ -375,6 +394,22 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
   font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
 }
 .total-amt.fresa { color: var(--fresa-600); font: var(--t-display-lg); }
+
+/* ---------- Cobro de deudas ---------- */
+.pay-all {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 4px 16px 0; padding: 14px 16px;
+  background: var(--fresa-50); border-radius: var(--r-md);
+  flex-shrink: 0;
+}
+.settle-list { padding: 8px 16px 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
+.settle-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.settle-meta { flex: 1; min-width: 0; }
+.settle-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .tabs {
   display: inline-flex; gap: 4px; padding: 4px;
@@ -498,10 +533,14 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
   box-shadow: var(--shadow-3);
   animation: pop var(--dur-slow) var(--ease-boing);
   overflow: hidden;
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
 }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 20px 8px;
+  flex-shrink: 0;
 }
 .modal-head h2 { font: var(--t-h1); }
 .persona-list  { max-height: 60vh; overflow: auto; padding: 4px 12px 20px; }
@@ -574,6 +613,8 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
 /* ---------- Confirmation modal ---------- */
 .confirm-modal {
   padding: 0 20px 16px;
+  overflow-y: auto;
+  min-height: 0;
 }
 .confirm-modal-list {
   list-style: none;
@@ -621,6 +662,7 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
   align-items: center;
   gap: 10px;
   padding: 12px 20px 20px;
+  flex-shrink: 0;
 }
 
 /* ---------- Deudas table responsive ---------- */

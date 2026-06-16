@@ -2,49 +2,54 @@ import { useState, useEffect } from 'react'
 import { createIcons } from 'lucide'
 import * as icons from 'lucide'
 import { useTranslation } from 'react-i18next'
-import { initialPersons, initialProducts, initialPurchases } from './data'
+import {
+  getPersonas, postPersona,
+  getProductos, postProducto, patchProducto,
+  getCompras, postCompra, settleCompras,
+} from './api'
 import { Header, BottomNav, PersonPicker, PinGate } from './Components'
 import RegisterPurchase from './views/RegisterPurchase'
 import MyPurchases from './views/MyPurchases'
 import MarianitaPanel from './views/MarianitaPanel'
 
-const loadFromStorage = (key, fallback) => {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback }
-  catch { return fallback }
-}
-
 export default function App() {
   const { t } = useTranslation()
 
-  const [persons, setPersons]             = useState(() => loadFromStorage('dulceria.persons', initialPersons))
-  const [products, setProducts]           = useState(initialProducts)
-  const [purchases, setPurchases]         = useState(() => loadFromStorage('dulceria.purchases', initialPurchases))
-  const [view, setView]                   = useState('register')
-  const [personId, setPersonId]           = useState(() => localStorage.getItem('dulceria.personId') || null)
-  const [isPickerOpen, setIsPickerOpen]   = useState(false)
+  const [persons, setPersons]               = useState([])
+  const [products, setProducts]             = useState([])
+  const [purchases, setPurchases]           = useState([])
+  const [view, setView]                     = useState('register')
+  const [personId, setPersonId]             = useState(() => localStorage.getItem('dulceria.personId') || null)
+  const [isPickerOpen, setIsPickerOpen]     = useState(false)
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false)
-
-  useEffect(() => { localStorage.setItem('dulceria.persons',   JSON.stringify(persons))   }, [persons])
-  useEffect(() => { localStorage.setItem('dulceria.purchases', JSON.stringify(purchases)) }, [purchases])
-  useEffect(() => { if (personId) localStorage.setItem('dulceria.personId', personId)    }, [personId])
-  useEffect(() => { createIcons({ icons }) }, [view, isPickerOpen, isAdminUnlocked])
+  const [loaded, setLoaded]                 = useState(false)
 
   useEffect(() => {
-    if (!personId || !persons.find(p => p.id === personId)) setIsPickerOpen(true)
+    Promise.all([getPersonas(), getProductos(), getCompras()])
+      .then(([personas, prods, compras]) => {
+        setPersons(personas)
+        setProducts(prods)
+        setPurchases(compras)
+      })
+      .catch(err => console.error('No se pudieron cargar los datos:', err))
+      .finally(() => setLoaded(true))
   }, [])
+
+  useEffect(() => {
+    if (!loaded) return
+    if (!personId || !persons.find(p => p.id === personId)) setIsPickerOpen(true)
+  }, [loaded])
+
+  useEffect(() => { if (personId) localStorage.setItem('dulceria.personId', personId) }, [personId])
+  useEffect(() => { createIcons({ icons }) }, [view, isPickerOpen, isAdminUnlocked])
 
   const currentPerson = persons.find(p => p.id === personId)
 
-  const handleRegister = ({ employeeId, name, phone }) => {
-    const newPerson = {
-      id:         'u-' + employeeId,
-      employeeId,
-      name,
-      phone,
-      initial:    name.charAt(0).toUpperCase(),
-    }
+  const handleRegister = async ({ employeeId, name, phone }) => {
+    const newPerson = await postPersona({ employeeId, name, phone })
     setPersons(prev => [...prev, newPerson])
     setPersonId(newPerson.id)
+    setIsPickerOpen(false)
   }
 
   const handleSetView = (v) => {
@@ -52,30 +57,51 @@ export default function App() {
     setView(v)
   }
 
-  const handleConfirm = ({ personId, method, items }) => {
-    const date   = new Date().toISOString()
-    const newPurchases = items.map((item, i) => ({
-      id:        'c-' + Date.now() + '-' + i,
-      personId,
-      productId: item.productId,
-      quantity:  item.quantity,
-      method,
-      date,
-    }))
-    setPurchases(prev => [...newPurchases, ...prev])
+  const handleConfirm = async ({ personId, method, items }) => {
+    const created = await postCompra({ personId, method, items })
+    setPurchases(prev => [...created, ...prev])
   }
 
-  const toggleProduct = (id) =>
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, active: !p.active } : p))
+  const toggleProduct = async (id) => {
+    const current = products.find(p => p.id === id)
+    if (!current) return
+    const next = !current.active
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, active: next } : p))
+    try {
+      await patchProducto(id, { active: next })
+    } catch (err) {
+      console.error('No se pudo actualizar el producto, se revierte:', err)
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, active: current.active } : p))
+    }
+  }
 
-  const editPrice = (id, price) =>
+  const editPrice = async (id, price) => {
+    const current = products.find(p => p.id === id)
+    if (!current) return
+    const prevPrice = current.price
     setProducts(prev => prev.map(p => p.id === id ? { ...p, price } : p))
+    try {
+      await patchProducto(id, { price })
+    } catch (err) {
+      console.error('No se pudo actualizar el precio, se revierte:', err)
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, price: prevPrice } : p))
+    }
+  }
 
-  const addProduct = ({ name, price }) =>
-    setProducts(prev => [
-      ...prev,
-      { id: 'p-' + Date.now(), name, emoji: '🍬', price, active: true },
-    ])
+  const addProduct = async ({ name, price }) => {
+    try {
+      const newProduct = await postProducto({ name, price, emoji: '🍬', active: true })
+      setProducts(prev => [...prev, newProduct])
+    } catch (err) {
+      console.error('No se pudo agregar el producto:', err)
+    }
+  }
+
+  const settleDebts = async (compraIds, paidMethod) => {
+    const updated = await settleCompras(compraIds, paidMethod)
+    const byId = Object.fromEntries(updated.map(c => [c.id, c]))
+    setPurchases(prev => prev.map(c => (byId[c.id] ? { ...c, ...byId[c.id] } : c)))
+  }
 
   const titles = {
     register:    t('app.recordTitle'),
@@ -91,21 +117,28 @@ export default function App() {
         onChangeUser={() => setIsPickerOpen(true)}
       />
       <main className="app-main">
-        {view === 'register' && currentPerson && (
+        {!loaded && (
+          <div className="view-loading">
+            <div className="spinner"></div>
+            <p>{t('app.loading')}</p>
+          </div>
+        )}
+        {loaded && view === 'register' && currentPerson && (
           <RegisterPurchase
             products={products}
             person={currentPerson}
             onConfirm={handleConfirm}
           />
         )}
-        {view === 'myPurchases' && currentPerson && (
+        {loaded && view === 'myPurchases' && currentPerson && (
           <MyPurchases
             purchases={purchases}
             products={products}
             person={currentPerson}
+            onSettle={settleDebts}
           />
         )}
-        {view === 'marianita' && (
+        {loaded && view === 'marianita' && (
           isAdminUnlocked
             ? <MarianitaPanel
                 purchases={purchases}
@@ -123,7 +156,7 @@ export default function App() {
         <PersonPicker
           persons={persons}
           value={personId}
-          onChange={setPersonId}
+          onChange={(id) => { setPersonId(id); setIsPickerOpen(false) }}
           onClose={() => { if (currentPerson) setIsPickerOpen(false) }}
           onRegister={handleRegister}
         />

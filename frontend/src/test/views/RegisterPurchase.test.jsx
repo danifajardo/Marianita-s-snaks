@@ -141,6 +141,19 @@ describe('RegisterPurchase — método de pago', () => {
     expect(screen.getByRole('button', { name: /Transfer/ })).toHaveClass('on')
     expect(screen.getByRole('button', { name: /Cash/ })).not.toHaveClass('on')
   })
+
+  it('puede registrar la compra como "On tab" (fiado)', async () => {
+    const user = userEvent.setup()
+    const onConfirm = vi.fn()
+    render(<RegisterPurchase {...defaultProps} onConfirm={onConfirm} />)
+    await addProduct(user)
+    await user.click(screen.getByRole('button', { name: /On tab/ }))
+    expect(screen.getByRole('button', { name: /On tab/ })).toHaveClass('on')
+    await user.click(screen.getByText('Record purchase'))
+    await user.click(screen.getByRole('button', { name: 'Confirm purchase' }))
+    expect(onConfirm).toHaveBeenCalledOnce()
+    expect(onConfirm.mock.calls[0][0].method).toBe('debt')
+  })
 })
 
 // ─── Modal de confirmación ─────────────────────────────────────────────────────
@@ -220,7 +233,8 @@ describe('RegisterPurchase — pantalla de éxito', () => {
     // fireEvent evita conflictos con los timers internos de userEvent
     fireEvent.click(screen.getByText('Chokis').closest('button'))
     fireEvent.click(screen.getByText('Record purchase'))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm purchase' }))
+    // confirm es async (espera al backend); act flushea la microtarea
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Confirm purchase' })) })
     expect(screen.getByText('Done!')).toBeInTheDocument()
     await act(async () => { vi.advanceTimersByTime(2500) })
     expect(screen.queryByText('Done!')).not.toBeInTheDocument()
