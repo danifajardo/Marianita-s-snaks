@@ -47,9 +47,9 @@ function createCompra(data) {
   if (['cash', 'transfer', 'debt'].indexOf(method) === -1) throw new Error('Método de pago inválido')
   if (items.length === 0) throw new Error('No hay productos en la compra')
 
-  // Precio actual de cada producto, para congelarlo en la compra.
-  const precioPorId = {}
-  readRows(SHEETS.PRODUCTOS).forEach(p => { precioPorId[String(p.id)] = Number(p.price) || 0 })
+  // Producto actual por id: para congelar precio y descontar stock.
+  const prodById = {}
+  readRows(SHEETS.PRODUCTOS).forEach(p => { prodById[String(p.id)] = p })
 
   const date = new Date().toISOString()
   const stamp = Date.now()
@@ -59,7 +59,7 @@ function createCompra(data) {
     personId:   personId,
     productId:  String(item.productId),
     quantity:   Number(item.quantity) || 1,
-    unitPrice:  precioPorId[String(item.productId)] || 0,
+    unitPrice:  Number((prodById[String(item.productId)] || {}).price) || 0,
     method:     method,
     date:       date,
     paidMethod: '',
@@ -67,6 +67,18 @@ function createCompra(data) {
   }))
 
   creadas.forEach(c => appendRow(SHEETS.COMPRAS, c))
+
+  // Descuenta stock por producto (se permite quedar en negativo: "permitir y avisar").
+  const qtyPorId = {}
+  creadas.forEach(c => { qtyPorId[c.productId] = (qtyPorId[c.productId] || 0) + c.quantity })
+  Object.keys(qtyPorId).forEach(pid => {
+    const prod = prodById[pid]
+    if (prod) {
+      const nuevoStock = (Math.trunc(Number(prod.stock) || 0)) - qtyPorId[pid]
+      updateRowById(SHEETS.PRODUCTOS, pid, { stock: nuevoStock })
+    }
+  })
+
   return creadas.map(mapCompra)
 }
 

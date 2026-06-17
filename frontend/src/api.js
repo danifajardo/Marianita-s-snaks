@@ -37,6 +37,31 @@ export async function postPersona(body) {
   return normalizePersona(await rpcPost('createPersona', body))
 }
 
+// Cambia el estado de una persona: 'active' (aprobar) | 'rejected' | 'pending'.
+export async function setPersonaStatus(id, status) {
+  return normalizePersona(await rpcPost('setPersonaStatus', { id, status }))
+}
+
+// Verifica el PIN de un usuario (true/false). Nunca expone el hash.
+export async function verifyUserPin(id, pin) {
+  try {
+    const { valid } = await rpcPost('verifyUserPin', { id, pin })
+    return !!valid
+  } catch {
+    return false
+  }
+}
+
+// Crea el PIN de un usuario que aún no tiene (registro, reset o usuario viejo).
+export async function setUserPin(id, pin) {
+  return normalizePersona(await rpcPost('setUserPin', { id, pin }))
+}
+
+// Resetea (borra) el PIN de un usuario — acción de Mari.
+export async function resetUserPin(id) {
+  return normalizePersona(await rpcPost('resetUserPin', { id }))
+}
+
 function normalizePersona(p) {
   return { ...p, initial: p.initial ?? p.name?.charAt(0).toUpperCase() ?? '?' }
 }

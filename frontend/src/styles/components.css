@@ -254,6 +254,30 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
 }
 .confirm-identity-q { margin: 4px 0 0; font: var(--t-h1); }
 
+/* Revisión de datos al registrar */
+.review-fields { width: 100%; display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+.review-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; background: var(--cream-100); border-radius: var(--r-md);
+  font: var(--t-body);
+}
+.review-row span { color: var(--fg-muted); }
+
+/* Encabezado de sección dentro de una tarjeta (gestión de usuarios) */
+.section-label {
+  font: var(--t-body-sm); font-weight: 700; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 14px 14px 6px;
+}
+
+/* Badge de solicitudes pendientes en la pestaña */
+.req-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  background: var(--fresa-500); color: #fff;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+}
+
 .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
 .dot.menta   { background: var(--menta-500); }
 .dot.lavanda { background: var(--lavanda-500); }
@@ -403,6 +427,37 @@ body { margin: 0; background: var(--bg); min-height: 100vh; }
   flex-shrink: 0;
 }
 .settle-list { padding: 8px 16px 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
+
+/* Ventas por día: fila expandible + detalle */
+.sales-day-row { cursor: pointer; }
+.sales-day-row:hover { background: var(--cream-100); }
+.sales-chevron {
+  width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px;
+  color: var(--fg-muted);
+  transition: transform var(--dur-base, 0.15s) ease;
+}
+.sales-chevron.open { transform: rotate(90deg); }
+.day-detail { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
+
+/* ---------- Inventario ---------- */
+.stock-badge {
+  position: absolute; top: 8px; left: 8px;
+  font: var(--t-body-sm); font-weight: 600;
+  padding: 2px 8px; border-radius: 999px; line-height: 1.4;
+}
+.stock-badge.out { background: var(--fresa-100); color: var(--fresa-700); }
+.stock-badge.low { background: var(--durazno-300); color: var(--cream-800); }
+
+.prod-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prod-stock {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--cream-100); color: var(--fg-muted);
+  border: none; border-radius: var(--r-md); padding: 4px 10px;
+  font: var(--t-body-sm); cursor: pointer;
+}
+.prod-stock svg { width: 12px; height: 12px; }
+.prod-stock.low { background: var(--durazno-300); color: var(--cream-800); }
+.prod-stock.out { background: var(--fresa-100); color: var(--fresa-700); }
 .settle-row {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px;

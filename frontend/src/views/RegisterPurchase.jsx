@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { createIcons, icons } from 'lucide'
 import { useTranslation } from 'react-i18next'
-import { formatCOP } from '../data'
+import { formatCOP, LOW_STOCK } from '../data'
 
 export default function RegisterPurchase({ products, person, onConfirm }) {
   const { t } = useTranslation()
@@ -125,6 +125,12 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
                     {qty}
                     <span className="qty-minus" onClick={(e) => decrease(p.id, e)}>−</span>
                   </span>
+                )}
+                {typeof p.stock === 'number' && p.stock <= 0 && (
+                  <span className="stock-badge out">{t('register.outOfStock')}</span>
+                )}
+                {typeof p.stock === 'number' && p.stock > 0 && p.stock <= LOW_STOCK && (
+                  <span className="stock-badge low">{t('register.lowStock', { count: p.stock })}</span>
                 )}
                 <span className="product-emoji">{p.emoji}</span>
                 <span className="product-name">{p.name}</span>

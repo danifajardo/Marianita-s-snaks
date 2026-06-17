@@ -48,8 +48,12 @@ function handle(data) {
 function dispatch(action, data) {
   switch (action) {
     // Personas
-    case 'getPersonas':    return listPersonas()
-    case 'createPersona':  return withLock(() => createPersona(data))
+    case 'getPersonas':       return listPersonas()
+    case 'createPersona':     return withLock(() => createPersona(data))
+    case 'setPersonaStatus':  return withLock(() => setPersonaStatus(data))
+    case 'verifyUserPin':     return verifyUserPin(data)
+    case 'setUserPin':        return withLock(() => setUserPin(data))
+    case 'resetUserPin':      return withLock(() => resetUserPin(data))
     // Productos
     case 'getProductos':   return listProductos()
     case 'createProducto': return withLock(() => createProducto(data))

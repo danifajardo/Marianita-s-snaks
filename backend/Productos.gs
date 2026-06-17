@@ -1,6 +1,6 @@
 /**
  * Productos — catálogo de snacks.
- * Hoja "Productos": id | name | emoji | price | active
+ * Hoja "Productos": id | name | emoji | price | active | stock
  */
 
 function toBool(v) {
@@ -14,6 +14,7 @@ function mapProducto(p) {
     emoji:  String(p.emoji || '🍬'),
     price:  Number(p.price) || 0,
     active: toBool(p.active),
+    stock:  Math.trunc(Number(p.stock) || 0),
   }
 }
 
@@ -33,6 +34,7 @@ function createProducto(data) {
     emoji:  String(data.emoji || '🍬'),
     price:  price,
     active: data.active === undefined ? true : toBool(data.active),
+    stock:  Math.trunc(Number(data.stock) || 0),
   }
   appendRow(SHEETS.PRODUCTOS, producto)
   return mapProducto(producto)
@@ -51,6 +53,7 @@ function updateProducto(data) {
   if (data.active !== undefined) patch.active = toBool(data.active)
   if (data.name !== undefined)   patch.name = String(data.name).trim()
   if (data.emoji !== undefined)  patch.emoji = String(data.emoji)
+  if (data.stock !== undefined)  patch.stock = Math.trunc(Number(data.stock) || 0)
 
   if (Object.keys(patch).length === 0) throw new Error('Nada que actualizar')
 

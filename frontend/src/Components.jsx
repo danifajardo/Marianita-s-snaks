@@ -84,19 +84,25 @@ export function MetodoBadge({ method }) {
   )
 }
 
-export function PersonPicker({ persons, value, onChange, onClose, onRegister }) {
+export function PersonPicker({ persons, value, onChange, onClose, onRegister, onVerifyPin, onSetPin }) {
   const { t } = useTranslation()
   const [mode, setMode]           = useState('list')
   const [employeeId, setEmployeeId] = useState('')
   const [name, setName]           = useState('')
   const [phone, setPhone]         = useState('')
+  const [pin, setPin]             = useState('')
   const [error, setError]         = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmPerson, setConfirmPerson] = useState(null)
+  const [reviewData, setReviewData] = useState(null)
+  const [pinValue, setPinValue]   = useState('')
+  const [pinError, setPinError]   = useState('')
+  const [pinBusy, setPinBusy]     = useState(false)
 
   useEffect(() => { createIcons({ icons }) })
 
-  const handleRegister = async () => {
+  // Paso 1: valida y pasa a la pantalla de revisión de datos.
+  const reviewRegister = () => {
     const cleanId    = employeeId.trim()
     const cleanName  = name.trim()
     const cleanPhone = phone.trim()
@@ -104,9 +110,17 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
     if (!cleanName)                                         return setError(t('picker.errName'))
     if (!cleanPhone || cleanPhone.length < 10)              return setError(t('picker.errPhone'))
     if (persons.find(p => p.employeeId === cleanId))        return setError(t('picker.errIdTaken'))
+    if (!/^\d{4}$/.test(pin))                               return setError(t('picker.errPin'))
+    setError('')
+    setReviewData({ employeeId: cleanId, name: cleanName, phone: cleanPhone, pin })
+  }
+
+  // Paso 2: confirma y crea la persona (queda pendiente de aprobación).
+  const submitRegister = async () => {
+    if (submitting || !reviewData) return
     try {
       setSubmitting(true)
-      await onRegister({ employeeId: cleanId, name: cleanName, phone: cleanPhone })
+      await onRegister(reviewData)
       onClose()
     } catch (err) {
       setError(err?.message || t('picker.errGeneric'))
@@ -115,12 +129,47 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
     }
   }
 
+  const backToList = () => { setMode('list'); setError(''); setReviewData(null); setPin('') }
+
+  const chooseConfirm = (p) => { setConfirmPerson(p); setPinValue(''); setPinError('') }
+
+  // Al seleccionarse: si ya tiene PIN lo ingresa; si no, lo crea (reset o usuario viejo).
+  const submitPin = async () => {
+    if (pinBusy || !confirmPerson) return
+    const v = pinValue.trim()
+    if (!/^\d{4}$/.test(v)) return setPinError(t('picker.errPin'))
+    setPinBusy(true)
+    try {
+      if (confirmPerson.hasPin) {
+        const ok = await onVerifyPin(confirmPerson.id, v)
+        if (!ok) { setPinError(t('picker.pinIncorrect')); setPinValue(''); setPinBusy(false); return }
+      } else {
+        await onSetPin(confirmPerson.id, v)
+      }
+      setPinBusy(false)
+      onChange(confirmPerson.id)
+      onClose()
+    } catch (err) {
+      setPinError(err?.message || t('picker.errGeneric'))
+      setPinBusy(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <h2>{confirmPerson ? t('picker.confirmIdentity') : mode === 'list' ? t('picker.whoAreYou') : t('picker.registerTitle')}</h2>
-          <button className="icon-btn" onClick={confirmPerson ? () => setConfirmPerson(null) : onClose}>
+          <h2>{
+            confirmPerson ? t('picker.confirmIdentity')
+              : reviewData ? t('picker.reviewTitle')
+              : mode === 'list' ? t('picker.whoAreYou')
+              : t('picker.registerTitle')
+          }</h2>
+          <button className="icon-btn" onClick={
+            confirmPerson ? () => setConfirmPerson(null)
+              : reviewData ? () => setReviewData(null)
+              : onClose
+          }>
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -129,15 +178,39 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
           <div className="confirm-identity">
             <span className="avatar lg">{confirmPerson.initial}</span>
             <h2 className="confirm-identity-q">{t('picker.areYou', { name: confirmPerson.name })}</h2>
-            <button
-              className="btn-primary"
-              style={{ width: '100%' }}
-              onClick={() => { onChange(confirmPerson.id); onClose() }}
-            >
-              {t('picker.yesItsMe')}
+            <p className="pin-sub">{confirmPerson.hasPin ? t('picker.enterPinHint') : t('picker.createPinHint')}</p>
+            <input
+              className={'pin-input' + (pinError ? ' pin-error' : '')}
+              type="password" inputMode="numeric" maxLength={4} placeholder="• • • •"
+              value={pinValue}
+              onChange={e => { setPinValue(e.target.value.replace(/\D/g, '')); setPinError('') }}
+              onKeyDown={e => e.key === 'Enter' && submitPin()}
+              autoFocus
+            />
+            {pinError && <p className="pin-msg">{pinError}</p>}
+            <button className="btn-primary" style={{ width: '100%' }} disabled={pinBusy} onClick={submitPin}>
+              {pinBusy ? t('picker.processing') : (confirmPerson.hasPin ? t('picker.enterPin') : t('picker.createPin'))}
             </button>
-            <button className="btn-ghost" onClick={() => setConfirmPerson(null)}>
+            <button className="btn-ghost" disabled={pinBusy} onClick={() => setConfirmPerson(null)}>
               {t('picker.notMe')}
+            </button>
+          </div>
+        ) : reviewData ? (
+          <div className="confirm-identity">
+            <span className="avatar lg">{reviewData.name.charAt(0).toUpperCase()}</span>
+            <h2 className="confirm-identity-q">{t('picker.reviewQuestion')}</h2>
+            <div className="review-fields">
+              <div className="review-row"><span>{t('picker.employeeNumber')}</span><b>#{reviewData.employeeId}</b></div>
+              <div className="review-row"><span>{t('picker.yourName')}</span><b>{reviewData.name}</b></div>
+              <div className="review-row"><span>{t('picker.phone')}</span><b>{reviewData.phone}</b></div>
+              <div className="review-row"><span>{t('picker.pinLabel')}</span><b>• • • •</b></div>
+            </div>
+            {error && <p className="pin-msg">{error}</p>}
+            <button className="btn-primary" style={{ width: '100%' }} disabled={submitting} onClick={submitRegister}>
+              {submitting ? t('picker.registering') : t('picker.confirmRegister')}
+            </button>
+            <button className="btn-ghost" disabled={submitting} onClick={() => setReviewData(null)}>
+              {t('picker.back')}
             </button>
           </div>
         ) : mode === 'list' ? (
@@ -152,7 +225,7 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
                 <button
                   key={p.id}
                   className={'persona-row ' + (value === p.id ? 'sel' : '')}
-                  onClick={() => setConfirmPerson(p)}
+                  onClick={() => chooseConfirm(p)}
                 >
                   <span className="avatar lg">{p.initial}</span>
                   <span className="persona-meta">
@@ -202,11 +275,23 @@ export function PersonPicker({ persons, value, onChange, onClose, onRegister }) 
                 onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError('') }}
               />
             </div>
+            <div className="field-group">
+              <label className="field-label">{t('picker.pinLabel')}</label>
+              <input
+                className="field-input"
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder={t('picker.pinPlaceholder')}
+                value={pin}
+                onChange={e => { setPin(e.target.value.replace(/\D/g, '')); setError('') }}
+              />
+            </div>
             {error && <p className="pin-msg">{error}</p>}
-            <button className="btn-primary" onClick={handleRegister} disabled={submitting} style={{ width: '100%' }}>
-              {submitting ? t('picker.registering') : t('picker.registerBtn')}
+            <button className="btn-primary" onClick={reviewRegister} style={{ width: '100%' }}>
+              {t('picker.registerBtn')}
             </button>
-            <button className="btn-ghost" onClick={() => { setMode('list'); setError('') }}>
+            <button className="btn-ghost" onClick={backToList}>
               {t('picker.back')}
             </button>
           </div>
@@ -254,6 +339,20 @@ export function PinGate({ onSuccess }) {
           {t('pin.enter')}
         </button>
       </div>
+    </div>
+  )
+}
+
+export function PendingApproval({ onChangeUser }) {
+  const { t } = useTranslation()
+  return (
+    <div className="empty">
+      <div className="empty-emoji">⏳</div>
+      <h2>{t('pending.title')}</h2>
+      <p>{t('pending.desc')}</p>
+      <button className="btn-ghost" onClick={onChangeUser} style={{ marginTop: '14px' }}>
+        {t('pending.changeUser')}
+      </button>
     </div>
   )
 }

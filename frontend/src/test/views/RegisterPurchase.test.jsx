@@ -39,6 +39,20 @@ describe('RegisterPurchase — pantalla inicial', () => {
     expect(screen.getByText('$ 2.800')).toBeInTheDocument()
   })
 
+  it('avisa "Agotado" y "Quedan N" según el stock, pero deja comprar', async () => {
+    const user = userEvent.setup()
+    const conStock = [
+      { id: 'p1', name: 'Chokis',  emoji: '🍪', price: 2000, active: true, stock: 0 },
+      { id: 'p2', name: 'Doritos', emoji: '🌽', price: 2800, active: true, stock: 3 },
+    ]
+    render(<RegisterPurchase {...defaultProps} products={conStock} />)
+    expect(screen.getByText('Sold out')).toBeInTheDocument()
+    expect(screen.getByText('3 left')).toBeInTheDocument()
+    // aunque esté agotado, se puede agregar al carrito ("permitir")
+    await user.click(screen.getByText('Chokis').closest('button'))
+    expect(screen.getByText('Record purchase')).toBeInTheDocument()
+  })
+
   it('no muestra la barra de checkout cuando el carrito está vacío', () => {
     render(<RegisterPurchase {...defaultProps} />)
     expect(screen.queryByText('Record purchase')).not.toBeInTheDocument()

@@ -10,11 +10,13 @@
 // (para no perder ceros a la izquierda en IDs/teléfonos ni convertir a número).
 const SHEET_DEFS = {
   Personas: {
-    headers: ['id', 'employeeId', 'name', 'phone', 'initial', 'createdAt'],
-    textCols: ['id', 'employeeId', 'name', 'phone', 'initial', 'createdAt'],
+    // status/pinHash/pinSalt van al final para no desalinear datos existentes al re-ejecutar setup.
+    headers: ['id', 'employeeId', 'name', 'phone', 'initial', 'createdAt', 'status', 'pinHash', 'pinSalt'],
+    textCols: ['id', 'employeeId', 'name', 'phone', 'initial', 'createdAt', 'status', 'pinHash', 'pinSalt'],
   },
   Productos: {
-    headers: ['id', 'name', 'emoji', 'price', 'active'],
+    // stock va al final para no desalinear datos existentes al re-ejecutar setup.
+    headers: ['id', 'name', 'emoji', 'price', 'active', 'stock'],
     textCols: ['id', 'name', 'emoji'],
   },
   Compras: {

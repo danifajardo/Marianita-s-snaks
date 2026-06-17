@@ -66,6 +66,9 @@ export const initialPurchases = []
 export const formatCOP = (n) =>
   '$ ' + n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
+// Umbral para avisar "stock bajo" en el catálogo.
+export const LOW_STOCK = 5
+
 // Método "efectivo" de una compra: una compra fiada (debt) ya pagada cuenta según
 // el método con que se saldó (paidMethod); si sigue pendiente, cuenta como 'debt'.
 export const effectiveMethod = (c) =>

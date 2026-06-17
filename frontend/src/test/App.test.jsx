@@ -8,11 +8,12 @@ vi.mock('lucide')
 vi.mock('react-i18next')
 vi.mock('../api')
 
-const person = { id: 'u-1', employeeId: '001', name: 'Ana García', initial: 'A' }
+const person = { id: 'u-1', employeeId: '001', name: 'Ana García', initial: 'A', status: 'active' }
 
 const seedApi = (persons = [person]) => {
   vi.mocked(api.getPersonas).mockResolvedValue(persons)
   localStorage.setItem('dulceria.personId', 'u-1')
+  localStorage.setItem('dulceria.sessionExp', String(Date.now() + 3600000))
 }
 
 beforeEach(() => {
@@ -22,7 +23,7 @@ beforeEach(() => {
   vi.mocked(api.getProductos).mockResolvedValue([])
   vi.mocked(api.getCompras).mockResolvedValue([])
   vi.mocked(api.postPersona).mockImplementation(({ employeeId, name, phone }) =>
-    Promise.resolve({ id: 'u-' + employeeId, employeeId, name, phone, initial: name.charAt(0).toUpperCase() })
+    Promise.resolve({ id: 'u-' + employeeId, employeeId, name, phone, initial: name.charAt(0).toUpperCase(), status: 'pending' })
   )
   vi.mocked(api.postCompra).mockResolvedValue([])
   vi.mocked(api.patchProducto).mockResolvedValue({})
@@ -38,6 +39,7 @@ describe('App — selección inicial de persona', () => {
   it('muestra el PersonPicker cuando el ID guardado no existe en la lista', async () => {
     vi.mocked(api.getPersonas).mockResolvedValue([])
     localStorage.setItem('dulceria.personId', 'u-inexistente')
+    localStorage.setItem('dulceria.sessionExp', String(Date.now() + 3600000))
     render(<App />)
     await waitFor(() => expect(screen.getByText('Who are you?')).toBeInTheDocument())
   })
@@ -47,10 +49,26 @@ describe('App — selección inicial de persona', () => {
     render(<App />)
     await waitFor(() => expect(screen.queryByText('Who are you?')).not.toBeInTheDocument())
   })
+
+  it('si la sesión expiró, pide identificarse de nuevo', async () => {
+    vi.mocked(api.getPersonas).mockResolvedValue([person])
+    localStorage.setItem('dulceria.personId', 'u-1')
+    localStorage.setItem('dulceria.sessionExp', String(Date.now() - 1000)) // ya vencida
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('Who are you?')).toBeInTheDocument())
+  })
+
+  it('cierra la sesión si al usuario logueado le resetearon el PIN', async () => {
+    vi.mocked(api.getPersonas).mockResolvedValue([{ ...person, hasPin: false }])
+    localStorage.setItem('dulceria.personId', 'u-1')
+    localStorage.setItem('dulceria.sessionExp', String(Date.now() + 3600000))
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('Who are you?')).toBeInTheDocument())
+  })
 })
 
 describe('App — registro de nueva persona', () => {
-  it('registrar una persona nueva cierra el picker y muestra la vista principal', async () => {
+  it('registrar pasa por confirmación y deja al usuario pendiente de aprobación', async () => {
     const user = userEvent.setup()
     render(<App />)
     await waitFor(() => screen.getByText("I'm new, sign me up"))
@@ -58,9 +76,14 @@ describe('App — registro de nueva persona', () => {
     await user.type(screen.getByPlaceholderText('e.g. 31000376'), '007')
     await user.type(screen.getByPlaceholderText('e.g. Maria Lopez'), 'James Bond')
     await user.type(screen.getByPlaceholderText('e.g. 3001234567'), '3001234567')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
+    // paso 1: revisión de datos
     await user.click(screen.getByText('Register me'))
-    await waitFor(() => expect(screen.queryByText('Who are you?')).not.toBeInTheDocument())
-    expect(screen.getByText(/James/)).toBeInTheDocument()
+    expect(screen.getByText('Is your info correct?')).toBeInTheDocument()
+    // paso 2: confirmar → crea pendiente
+    await user.click(screen.getByText('Yes, sign me up'))
+    // queda pendiente de aprobación (no entra a la app)
+    await waitFor(() => expect(screen.getByText('Pending approval')).toBeInTheDocument())
   })
 })
 
@@ -132,7 +155,9 @@ describe('App — persistencia en localStorage', () => {
     await user.type(screen.getByPlaceholderText('e.g. 31000376'), '042')
     await user.type(screen.getByPlaceholderText('e.g. Maria Lopez'), 'Carla')
     await user.type(screen.getByPlaceholderText('e.g. 3001234567'), '3009876543')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
     await user.click(screen.getByText('Register me'))
+    await user.click(screen.getByText('Yes, sign me up'))
     await waitFor(() => expect(localStorage.getItem('dulceria.personId')).toBeTruthy())
   })
 })

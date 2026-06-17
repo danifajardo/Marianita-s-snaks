@@ -1,19 +1,24 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Fragment } from 'react'
 import { createIcons, icons } from 'lucide'
 import { useTranslation } from 'react-i18next'
-import { formatCOP, effectiveMethod, lineTotal } from '../data'
+import { formatCOP, effectiveMethod, lineTotal, relativeDate, LOW_STOCK } from '../data'
+import { MetodoBadge } from '../Components'
 
-export default function MarianitaPanel({ purchases, products, persons, onToggleProduct, onEditPrice, onAddProduct }) {
-  const { t } = useTranslation()
+export default function MarianitaPanel({ purchases, products, persons, pendingPersons = [], inactivePersons = [], onToggleProduct, onEditPrice, onEditStock, onAddProduct, onApprovePerson, onRejectPerson, onResetPin, onDeactivatePerson, onReactivatePerson }) {
+  const { t, i18n } = useTranslation()
   const [range, setRange]         = useState('week')
   const [tab, setTab]             = useState('summary')
   const [editingId, setEditingId] = useState(null)
   const [tempPrice, setTempPrice] = useState('')
+  const [stockEditId, setStockEditId] = useState(null)
+  const [tempStock, setTempStock] = useState('')
   const [isAdding, setIsAdding]   = useState(false)
   const [newName, setNewName]     = useState('')
   const [newPrice, setNewPrice]   = useState('')
+  const [newStock, setNewStock]   = useState('')
+  const [expandedDay, setExpandedDay] = useState(null)
 
-  useEffect(() => { createIcons({ icons }) }, [range, tab, editingId, isAdding, products, purchases])
+  useEffect(() => { createIcons({ icons }) }, [range, tab, editingId, stockEditId, isAdding, expandedDay, products, purchases])
 
   const inRange = (iso) => {
     const days = (new Date() - new Date(iso)) / (1000 * 60 * 60 * 24)
@@ -45,17 +50,50 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
       .sort((a, b) => b.total - a.total)
   }, [filtered, persons, products])
 
+  // Ventas agrupadas por día (calendario local), más reciente primero.
+  const salesByDay = useMemo(() => {
+    const map = {}
+    filtered.forEach(c => {
+      const d = new Date(c.date)
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      if (!map[key]) map[key] = { key, date: c.date, total: 0, count: 0, items: [] }
+      map[key].total += purchaseTotal(c)
+      map[key].count += 1
+      map[key].items.push(c)
+    })
+    return Object.values(map).sort((a, b) => new Date(b.date) - new Date(a.date))
+  }, [filtered, products])
+
+  const activeUsers = persons.filter(p => p.status === 'active')
+
+  // Feedback de las acciones sobre usuarios (aprobar/rechazar/resetear PIN).
+  const [busy, setBusy] = useState(null)   // { id, action }
+  const runOn = async (id, action, fn) => {
+    if (busy) return
+    setBusy({ id, action })
+    try { await fn(id) } catch (err) { console.error(err) } finally { setBusy(null) }
+  }
+  const isBusy  = (id, action) => busy && busy.id === id && busy.action === action
+  const rowBusy = (id) => !!(busy && busy.id === id)
+
   const startEdit = (p) => { setEditingId(p.id); setTempPrice(String(p.price)) }
   const saveEdit  = () => {
     const parsedPrice = parseInt(tempPrice.replace(/\D/g, ''), 10)
     if (!isNaN(parsedPrice) && parsedPrice > 0) onEditPrice(editingId, parsedPrice)
     setEditingId(null)
   }
+  const startEditStock = (p) => { setStockEditId(p.id); setTempStock(String(p.stock ?? 0)) }
+  const saveStock = () => {
+    const parsedStock = parseInt(tempStock.replace(/[^\d]/g, ''), 10)
+    if (!isNaN(parsedStock)) onEditStock(stockEditId, parsedStock)
+    setStockEditId(null)
+  }
   const handleAdd = () => {
     const parsedPrice = parseInt(newPrice.replace(/\D/g, ''), 10)
+    const parsedStock = parseInt(newStock.replace(/[^\d]/g, ''), 10)
     if (newName.trim() && !isNaN(parsedPrice) && parsedPrice > 0) {
-      onAddProduct({ name: newName.trim(), price: parsedPrice })
-      setNewName(''); setNewPrice(''); setIsAdding(false)
+      onAddProduct({ name: newName.trim(), price: parsedPrice, stock: isNaN(parsedStock) ? 0 : parsedStock })
+      setNewName(''); setNewPrice(''); setNewStock(''); setIsAdding(false)
     }
   }
 
@@ -100,10 +138,162 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
         <button className={tab === 'summary' ? 'on' : ''} onClick={() => setTab('summary')}>
           <i data-lucide="users"></i>{t('panel.whoOwes')}
         </button>
+        <button className={tab === 'sales' ? 'on' : ''} onClick={() => setTab('sales')}>
+          <i data-lucide="receipt"></i>{t('panel.sales')}
+        </button>
         <button className={tab === 'products' ? 'on' : ''} onClick={() => setTab('products')}>
           <i data-lucide="package"></i>{t('panel.products')}
         </button>
+        <button className={tab === 'requests' ? 'on' : ''} onClick={() => setTab('requests')}>
+          <i data-lucide="users-round"></i>{t('panel.users')}
+          {pendingPersons.length > 0 && <span className="req-badge">{pendingPersons.length}</span>}
+        </button>
       </div>
+
+      {tab === 'requests' && (
+        <div className="card">
+          {pendingPersons.length > 0 && (
+            <>
+              <div className="section-label">{t('panel.pendingSection')}</div>
+              <div className="productos-list">
+                {pendingPersons.map(p => (
+                  <div key={p.id} className="prod-row">
+                    <span className="avatar">{p.initial}</span>
+                    <div className="prod-meta">
+                      <div className="prod-name">{p.name}</div>
+                      <div className="persona-area">#{p.employeeId} · {p.phone}</div>
+                    </div>
+                    <div className="settle-actions">
+                      <button className="btn-primary sm" disabled={rowBusy(p.id)} onClick={() => runOn(p.id, 'approve', onApprovePerson)}>
+                        {isBusy(p.id, 'approve') ? t('panel.processing') : t('panel.approve')}
+                      </button>
+                      <button className="btn-ghost sm" disabled={rowBusy(p.id)} onClick={() => runOn(p.id, 'reject', onRejectPerson)}>
+                        {isBusy(p.id, 'reject') ? t('panel.processing') : t('panel.reject')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="section-label">{t('panel.activeSection')}</div>
+          {activeUsers.length === 0 ? (
+            <div className="empty small">
+              <div className="empty-emoji">👥</div>
+              <h2>{t('panel.noUsers')}</h2>
+            </div>
+          ) : (
+            <div className="productos-list">
+              {activeUsers.map(p => (
+                <div key={p.id} className="prod-row">
+                  <span className="avatar">{p.initial}</span>
+                  <div className="prod-meta">
+                    <div className="prod-name">{p.name}</div>
+                    <div className="persona-area">#{p.employeeId}{p.hasPin === false ? ' · ' + t('panel.noPin') : ''}</div>
+                  </div>
+                  <div className="settle-actions">
+                    <button className="btn-ghost sm" disabled={rowBusy(p.id)} onClick={() => runOn(p.id, 'reset', onResetPin)}>
+                      {isBusy(p.id, 'reset') ? t('panel.processing') : t('panel.resetPin')}
+                    </button>
+                    <button className="btn-ghost sm" disabled={rowBusy(p.id)} onClick={() => runOn(p.id, 'deactivate', onDeactivatePerson)}>
+                      {isBusy(p.id, 'deactivate') ? t('panel.processing') : t('panel.deactivate')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {inactivePersons.length > 0 && (
+            <>
+              <div className="section-label">{t('panel.inactiveSection')}</div>
+              <div className="productos-list">
+                {inactivePersons.map(p => (
+                  <div key={p.id} className="prod-row off">
+                    <span className="avatar">{p.initial}</span>
+                    <div className="prod-meta">
+                      <div className="prod-name">{p.name}</div>
+                      <div className="persona-area">#{p.employeeId}</div>
+                    </div>
+                    <button className="btn-primary sm" disabled={rowBusy(p.id)} onClick={() => runOn(p.id, 'reactivate', onReactivatePerson)}>
+                      {isBusy(p.id, 'reactivate') ? t('panel.processing') : t('panel.reactivate')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'sales' && (
+        <div className="card">
+          {salesByDay.length === 0 ? (
+            <div className="empty small">
+              <div className="empty-emoji">🧾</div>
+              <h2>{t('panel.noSales')}</h2>
+            </div>
+          ) : (
+            <table className="deudas-table">
+              <thead>
+                <tr>
+                  <th>{t('panel.day')}</th>
+                  <th>{t('panel.purchases')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('panel.salesTotal')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesByDay.map(d => (
+                  <Fragment key={d.key}>
+                    <tr className="sales-day-row" onClick={() => setExpandedDay(expandedDay === d.key ? null : d.key)}>
+                      <td className="persona-name">
+                        <svg
+                          className={'sales-chevron' + (expandedDay === d.key ? ' open' : '')}
+                          viewBox="0 0 24 24" width="14" height="14"
+                          fill="none" stroke="currentColor" strokeWidth="2"
+                          strokeLinecap="round" strokeLinejoin="round"
+                        >
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                        {relativeDate(d.date, t, i18n.language)}
+                      </td>
+                      <td className="body-sm deudas-count">{t('panel.count', { count: d.count })}</td>
+                      <td className="mono amt">{formatCOP(d.total)}</td>
+                    </tr>
+                    {expandedDay === d.key && (
+                      <tr className="day-detail-row">
+                        <td colSpan={3}>
+                          <div className="day-detail">
+                            {d.items.map(c => {
+                              const p = products.find(x => x.id === c.productId)
+                              const persona = persons.find(x => x.id === c.personId)
+                              return (
+                                <div key={c.id} className="settle-row">
+                                  <span className="prod-emoji">{p ? p.emoji : '🍬'}</span>
+                                  <div className="settle-meta">
+                                    <div className="compra-name">
+                                      {p ? p.name : '—'}
+                                      {c.quantity > 1 && <span className="qty"> × {c.quantity}</span>}
+                                    </div>
+                                    <div className="body-sm">{persona ? persona.name : '—'}</div>
+                                  </div>
+                                  <MetodoBadge method={effectiveMethod(c)} />
+                                  <span className="mono">{formatCOP(purchaseTotal(c))}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {tab === 'summary' && (
         <div className="card">
@@ -162,10 +352,24 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
                       <button className="btn-primary sm" onClick={saveEdit}>{t('panel.save')}</button>
                       <button className="btn-ghost sm" onClick={() => setEditingId(null)}>{t('panel.cancel')}</button>
                     </div>
+                  ) : stockEditId === p.id ? (
+                    <div className="prod-edit">
+                      <input className="precio-input" inputMode="numeric" value={tempStock} onChange={e => setTempStock(e.target.value)} autoFocus />
+                      <button className="btn-primary sm" onClick={saveStock}>{t('panel.save')}</button>
+                      <button className="btn-ghost sm" onClick={() => setStockEditId(null)}>{t('panel.cancel')}</button>
+                    </div>
                   ) : (
-                    <button className="prod-price" onClick={() => startEdit(p)}>
-                      {formatCOP(p.price)} <i data-lucide="pencil"></i>
-                    </button>
+                    <div className="prod-controls">
+                      <button className="prod-price" onClick={() => startEdit(p)}>
+                        {formatCOP(p.price)} <i data-lucide="pencil"></i>
+                      </button>
+                      <button
+                        className={'prod-stock' + (p.stock <= 0 ? ' out' : p.stock <= LOW_STOCK ? ' low' : '')}
+                        onClick={() => startEditStock(p)}
+                      >
+                        {t('panel.stockLabel', { count: p.stock ?? 0 })} <i data-lucide="pencil"></i>
+                      </button>
+                    </div>
                   )}
                 </div>
                 <label className="toggle">
@@ -180,6 +384,7 @@ export default function MarianitaPanel({ purchases, products, persons, onToggleP
             <div className="prod-add">
               <input placeholder={t('panel.productName')} value={newName}  onChange={e => setNewName(e.target.value)} />
               <input placeholder={t('panel.price')}       value={newPrice} onChange={e => setNewPrice(e.target.value)} />
+              <input placeholder={t('panel.stock')} inputMode="numeric" value={newStock} onChange={e => setNewStock(e.target.value)} />
               <button className="btn-primary" onClick={handleAdd}>{t('panel.add')}</button>
               <button className="btn-ghost" onClick={() => setIsAdding(false)}>{t('panel.cancel')}</button>
             </div>

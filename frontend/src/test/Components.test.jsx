@@ -111,6 +111,8 @@ describe('PersonPicker', () => {
     onChange: vi.fn(),
     onClose: vi.fn(),
     onRegister: vi.fn(),
+    onVerifyPin: vi.fn(),
+    onSetPin: vi.fn(),
   }
 
   beforeEach(() => {
@@ -141,27 +143,67 @@ describe('PersonPicker', () => {
   it('al seleccionar una persona pide confirmación antes de elegirla', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    const onClose = vi.fn()
-    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A' }]
-    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onClose={onClose} />)
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
+    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} />)
     await user.click(screen.getByText('#001'))
-    // todavía no selecciona: aparece la confirmación
+    // todavía no selecciona: aparece la confirmación de identidad
     expect(screen.getByText('Are you Ana?')).toBeInTheDocument()
     expect(onChange).not.toHaveBeenCalled()
-    await user.click(screen.getByText("Yes, it's me"))
-    expect(onChange).toHaveBeenCalledWith('u-1')
-    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('si cancela la confirmación, vuelve a la lista sin seleccionar', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A' }]
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
     render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} />)
     await user.click(screen.getByText('#001'))
     await user.click(screen.getByText('No, go back'))
     expect(onChange).not.toHaveBeenCalled()
     expect(screen.getByText('#001')).toBeInTheDocument()
+  })
+
+  it('un usuario con PIN debe ingresarlo: PIN correcto selecciona', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const onClose = vi.fn()
+    const onVerifyPin = vi.fn().mockResolvedValue(true)
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
+    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onClose={onClose} onVerifyPin={onVerifyPin} />)
+    // identidad + PIN en una sola pantalla
+    await user.click(screen.getByText('#001'))
+    expect(screen.getByText('Are you Ana?')).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('• • • •'), '1234')
+    await user.click(screen.getByText('Enter'))
+    expect(onVerifyPin).toHaveBeenCalledWith('u-1', '1234')
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('u-1'))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('un usuario con PIN: PIN incorrecto no selecciona', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const onVerifyPin = vi.fn().mockResolvedValue(false)
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
+    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onVerifyPin={onVerifyPin} />)
+    await user.click(screen.getByText('#001'))
+    await user.type(screen.getByPlaceholderText('• • • •'), '0000')
+    await user.click(screen.getByText('Enter'))
+    await waitFor(() => expect(screen.getByText('Incorrect PIN, try again')).toBeInTheDocument())
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('un usuario sin PIN (reset/nuevo) lo crea al seleccionarse', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const onClose = vi.fn()
+    const onSetPin = vi.fn().mockResolvedValue({})
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: false }]
+    render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onClose={onClose} onSetPin={onSetPin} />)
+    await user.click(screen.getByText('#001'))
+    await user.type(screen.getByPlaceholderText('• • • •'), '4321')
+    await user.click(screen.getByText('Create PIN'))
+    expect(onSetPin).toHaveBeenCalledWith('u-1', '4321')
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('u-1'))
   })
 
   it('muestra el formulario de registro al hacer clic en "I\'m new"', async () => {
@@ -222,13 +264,20 @@ describe('PersonPicker', () => {
     await user.type(screen.getByPlaceholderText('e.g. 31000376'), '007')
     await user.type(screen.getByPlaceholderText('e.g. Maria Lopez'), 'Carlos Ruiz')
     await user.type(screen.getByPlaceholderText('e.g. 3001234567'), '3001234567')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
+    // paso 1: revisión
     await user.click(screen.getByText('Register me'))
+    expect(onRegister).not.toHaveBeenCalled()
+    expect(screen.getByText('Is your info correct?')).toBeInTheDocument()
+    // paso 2: confirmar
+    await user.click(screen.getByText('Yes, sign me up'))
     expect(onRegister).toHaveBeenCalledWith({
       employeeId: '007',
       name: 'Carlos Ruiz',
       phone: '3001234567',
+      pin: '1234',
     })
-    expect(onClose).toHaveBeenCalledOnce()
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
   })
 
   it('el botón "← Back" regresa a la lista de personas', async () => {

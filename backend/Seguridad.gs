@@ -16,3 +16,19 @@ function verifyPin(data) {
   const real = String(getConfig('pin') || '')
   return { valid: pin !== '' && pin === real }
 }
+
+// ─── Hash de PIN por usuario ────────────────────────────────────────────────
+// El PIN nunca se guarda en texto plano: se almacena hash SHA-256 de (salt:pin).
+
+function makeSalt() {
+  return Utilities.getUuid()
+}
+
+function hashPin(pin, salt) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(salt) + ':' + String(pin),
+    Utilities.Charset.UTF_8
+  )
+  return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2) }).join('')
+}

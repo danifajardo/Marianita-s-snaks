@@ -33,6 +33,7 @@ const defaultProps = {
   persons,
   onToggleProduct: vi.fn(),
   onEditPrice:     vi.fn(),
+  onEditStock:     vi.fn(),
   onAddProduct:    vi.fn(),
 }
 
@@ -158,6 +159,100 @@ describe('MarianitaPanel — deuda saldada', () => {
   })
 })
 
+// ─── Pestaña "Ventas" ───────────────────────────────────────────────────────
+
+describe('MarianitaPanel — ventas por día', () => {
+  it('muestra el total vendido agrupado por día', async () => {
+    const user = userEvent.setup()
+    render(<MarianitaPanel {...defaultProps} />)
+    await user.click(screen.getByText('Sales'))
+    // hoy: c1(4000) + c2(2800) + c3(4000) = 10800 ; hace 2 días: c4(2000)
+    const tabla = document.querySelector('.deudas-table')
+    expect(within(tabla).getByText('$ 10.800')).toBeInTheDocument()
+    expect(within(tabla).getByText('$ 2.000')).toBeInTheDocument()
+  })
+
+  it('respeta el filtro de período en las ventas por día', async () => {
+    const user = userEvent.setup()
+    render(<MarianitaPanel {...defaultProps} />)
+    await user.click(screen.getByText('Today'))
+    await user.click(screen.getByText('Sales'))
+    // solo hoy: 10800; el día de hace 2 días (2000) ya no aparece
+    const tabla = document.querySelector('.deudas-table')
+    expect(within(tabla).getByText('$ 10.800')).toBeInTheDocument()
+    expect(within(tabla).queryByText('$ 2.000')).not.toBeInTheDocument()
+  })
+
+  it('al expandir un día muestra el detalle de las compras', async () => {
+    const user = userEvent.setup()
+    render(<MarianitaPanel {...defaultProps} />)
+    await user.click(screen.getByText('Sales'))
+    // el detalle aún no se ve
+    expect(screen.queryByText('Doritos')).not.toBeInTheDocument()
+    // expandir "hoy" (Today) muestra los productos vendidos ese día
+    await user.click(screen.getByText('Today', { selector: '.persona-name' }))
+    const detail = document.querySelector('.day-detail')
+    expect(within(detail).getByText('Doritos')).toBeInTheDocument()
+    // c1 y c3 son Chokis ese día
+    expect(within(detail).getAllByText('Chokis').length).toBe(2)
+  })
+})
+
+// ─── Pestaña "Solicitudes" ──────────────────────────────────────────────────
+
+describe('MarianitaPanel — usuarios', () => {
+  const pending = [
+    { id: 'u-9', employeeId: '009', name: 'Nuevo Juan', phone: '3001112233', initial: 'N', status: 'pending' },
+  ]
+
+  it('lista los pendientes y aprobar/rechazar llama al handler con el id', async () => {
+    const user = userEvent.setup()
+    const onApprovePerson = vi.fn()
+    const onRejectPerson = vi.fn()
+    render(<MarianitaPanel {...defaultProps} pendingPersons={pending} onApprovePerson={onApprovePerson} onRejectPerson={onRejectPerson} />)
+    await user.click(screen.getByText('Users'))
+    expect(screen.getByText('Nuevo Juan')).toBeInTheDocument()
+    await user.click(screen.getByText('Approve'))
+    expect(onApprovePerson).toHaveBeenCalledWith('u-9')
+    await user.click(screen.getByText('Reject'))
+    expect(onRejectPerson).toHaveBeenCalledWith('u-9')
+  })
+
+  it('resetear el PIN de un usuario activo llama a onResetPin', async () => {
+    const user = userEvent.setup()
+    const onResetPin = vi.fn()
+    const activos = [
+      { id: 'u-1', employeeId: '001', name: 'Ana Gómez', initial: 'A', status: 'active', hasPin: true },
+      { id: 'u-2', employeeId: '002', name: 'Luis Pérez', initial: 'L', status: 'active', hasPin: true },
+    ]
+    render(<MarianitaPanel {...defaultProps} persons={activos} onResetPin={onResetPin} />)
+    await user.click(screen.getByText('Users'))
+    await user.click(screen.getAllByText('Reset PIN')[0])
+    expect(onResetPin).toHaveBeenCalledWith('u-1')
+  })
+
+  it('desactivar un usuario activo llama a onDeactivatePerson', async () => {
+    const user = userEvent.setup()
+    const onDeactivatePerson = vi.fn()
+    const activos = [{ id: 'u-1', employeeId: '001', name: 'Ana Gómez', initial: 'A', status: 'active', hasPin: true }]
+    render(<MarianitaPanel {...defaultProps} persons={activos} onDeactivatePerson={onDeactivatePerson} />)
+    await user.click(screen.getByText('Users'))
+    await user.click(screen.getByText('Deactivate'))
+    expect(onDeactivatePerson).toHaveBeenCalledWith('u-1')
+  })
+
+  it('reactivar un usuario inactivo llama a onReactivatePerson', async () => {
+    const user = userEvent.setup()
+    const onReactivatePerson = vi.fn()
+    const inactivos = [{ id: 'u-3', employeeId: '003', name: 'Pedro Inactivo', initial: 'P', status: 'inactive', hasPin: true }]
+    render(<MarianitaPanel {...defaultProps} inactivePersons={inactivos} onReactivatePerson={onReactivatePerson} />)
+    await user.click(screen.getByText('Users'))
+    expect(screen.getByText('Pedro Inactivo')).toBeInTheDocument()
+    await user.click(screen.getByText('Reactivate'))
+    expect(onReactivatePerson).toHaveBeenCalledWith('u-3')
+  })
+})
+
 // ─── Pestaña "Productos" ──────────────────────────────────────────────────────
 
 describe('MarianitaPanel — pestaña "Products"', () => {
@@ -241,8 +336,21 @@ describe('MarianitaPanel — pestaña "Products"', () => {
     await user.type(screen.getByPlaceholderText('Product name'), 'Nucita')
     await user.type(screen.getByPlaceholderText('Price'), '1500')
     await user.click(screen.getByText('Add'))
-    expect(onAddProduct).toHaveBeenCalledWith({ name: 'Nucita', price: 1500 })
+    expect(onAddProduct).toHaveBeenCalledWith({ name: 'Nucita', price: 1500, stock: 0 })
     expect(screen.queryByPlaceholderText('Product name')).not.toBeInTheDocument()
+  })
+
+  it('editar el stock llama a onEditStock con el id y el valor', async () => {
+    const user = userEvent.setup()
+    const onEditStock = vi.fn()
+    render(<MarianitaPanel {...defaultProps} onEditStock={onEditStock} />)
+    await goToProducts(user)
+    await user.click(screen.getAllByText('Stock: 0')[0])
+    const input = screen.getByRole('textbox')
+    await user.clear(input)
+    await user.type(input, '12')
+    await user.click(screen.getByText('Save'))
+    expect(onEditStock).toHaveBeenCalledWith('p1', 12)
   })
 
   it('"Cancel" en el formulario cierra sin añadir producto', async () => {
