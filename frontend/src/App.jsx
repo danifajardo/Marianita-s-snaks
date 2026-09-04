@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
-import { createIcons } from 'lucide'
-import * as icons from 'lucide'
 import { useTranslation } from 'react-i18next'
 import {
   getPersonas, postPersona, setPersonaStatus,
-  verifyUserPin, setUserPin, resetUserPin,
+  loginUser, setUserPin, resetUserPin, logoutUser, getUserToken, setAdminToken,
   getProductos, postProducto, patchProducto,
   getCompras, postCompra, settleCompras,
 } from './api'
 import { Header, BottomNav, PersonPicker, PinGate, PendingApproval } from './Components'
+import { isError } from './errors'
 import RegisterPurchase from './views/RegisterPurchase'
 import MyPurchases from './views/MyPurchases'
 import MarianitaPanel from './views/MarianitaPanel'
@@ -16,18 +15,24 @@ import MarianitaPanel from './views/MarianitaPanel'
 // Duración de la sesión local. Pasado este lapso, al abrir la app se pide el PIN otra vez.
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000 // 12 horas
 
-// Lee la sesión guardada solo si no expiró; si expiró (o no tiene fecha), la limpia.
+// Lee la sesión guardada solo si no expiró Y sigue teniendo token; si no, la limpia.
+// El token es lo que realmente autoriza: sin él, el id guardado no sirve de nada.
 const readSession = () => {
   try {
     const id  = localStorage.getItem('dulceria.personId')
     const exp = Number(localStorage.getItem('dulceria.sessionExp') || 0)
-    if (id && exp && Date.now() < exp) return id
+    if (id && exp && Date.now() < exp && getUserToken()) return id
   } catch { /* noop */ }
+  clearSession()
+  return null
+}
+
+const clearSession = () => {
+  logoutUser()
   try {
     localStorage.removeItem('dulceria.personId')
     localStorage.removeItem('dulceria.sessionExp')
   } catch { /* noop */ }
-  return null
 }
 
 export default function App() {
@@ -42,7 +47,8 @@ export default function App() {
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false)
   const [loaded, setLoaded]                 = useState(false)
 
-  // Inicia sesión: guarda el usuario y una fecha de expiración (vence en SESSION_TTL_MS).
+  // Inicia sesión: el token ya lo guardó api.js al validar el PIN; aquí solo
+  // registramos quién es y hasta cuándo dura la sesión local.
   const login = (id) => {
     setPersonId(id)
     try {
@@ -51,36 +57,35 @@ export default function App() {
     } catch { /* noop */ }
   }
   const logout = () => {
-    try {
-      localStorage.removeItem('dulceria.personId')
-      localStorage.removeItem('dulceria.sessionExp')
-    } catch { /* noop */ }
+    clearSession()
     setPersonId(null)
+    setIsAdminUnlocked(false)
   }
 
+  // Carga inicial. Solo corre al montar: usa el personId de la sesión leída en el
+  // useState inicial, por eso el array de dependencias va vacío a propósito.
   useEffect(() => {
-    Promise.all([getPersonas(), getProductos(), getCompras()])
+    // Las compras exigen sesión: sin token ni las pedimos (daría 'No autenticado').
+    const comprasIniciales = personId ? getCompras().catch(() => []) : Promise.resolve([])
+    Promise.all([getPersonas(), getProductos(), comprasIniciales])
       .then(([personas, prods, compras]) => {
         setPersons(personas)
         setProducts(prods)
         setPurchases(compras)
         // Si el usuario logueado ya no puede usar la app (desactivado/rechazado) o le
         // resetearon el PIN, se cierra la sesión y deberá identificarse de nuevo.
-        if (personId) {
-          const me = personas.find(p => p.id === personId)
-          if (!me || me.status !== 'active' || me.hasPin === false) logout()
-        }
+        const me = personId ? personas.find(p => p.id === personId) : null
+        const sessionOk = !!me && me.status === 'active' && me.hasPin !== false
+        if (personId && !sessionOk) logout()
+        setIsPickerOpen(!sessionOk)
       })
-      .catch(err => console.error('No se pudieron cargar los datos:', err))
+      .catch(err => {
+        console.error('No se pudieron cargar los datos:', err)
+        setIsPickerOpen(true)
+      })
       .finally(() => setLoaded(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    if (!loaded) return
-    if (!personId || !persons.find(p => p.id === personId)) setIsPickerOpen(true)
-  }, [loaded])
-
-  useEffect(() => { createIcons({ icons }) }, [view, isPickerOpen, isAdminUnlocked])
 
   const currentPerson = persons.find(p => p.id === personId)
   const isActive       = currentPerson && currentPerson.status === 'active'
@@ -88,26 +93,83 @@ export default function App() {
   const pendingPersons = persons.filter(p => p.status === 'pending')
   const inactivePersons = persons.filter(p => p.status === 'inactive')
 
+  // Refresca la persona en el estado local tras un login (puede no estar en la
+  // lista pública todavía, p. ej. una recién registrada).
+  const upsertPerson = (persona) => setPersons(prev =>
+    prev.some(p => p.id === persona.id)
+      ? prev.map(p => (p.id === persona.id ? { ...p, ...persona } : p))
+      : [...prev, persona])
+
+  // Tras identificarse hay token, así que ya se pueden pedir las compras propias.
+  const loadMyPurchases = async () => {
+    try {
+      setPurchases(await getCompras())
+    } catch (err) {
+      console.error('No se pudieron cargar las compras:', err)
+    }
+  }
+
   const handleRegister = async ({ employeeId, name, phone, pin }) => {
     const newPerson = await postPersona({ employeeId, name, phone, pin })
-    setPersons(prev => [...prev, newPerson])
+    upsertPerson(newPerson)
     login(newPerson.id)
     setIsPickerOpen(false)
   }
 
   // PIN por usuario: verificar al seleccionarse, crear si no tiene, resetear (admin).
-  const verifyPin = (id, pin) => verifyUserPin(id, pin)
+  // verifyPin/createPin dejan el token guardado en api.js si tienen éxito.
+  // Devuelve false SOLO si el PIN no coincide (ERR-021); cualquier otro fallo
+  // —bloqueo por intentos, cuenta desactivada, red— se propaga para que el
+  // picker muestre el motivo real en vez de un genérico "PIN incorrecto".
+  const verifyPin = async (id, pin) => {
+    try {
+      const persona = await loginUser(id, pin)
+      upsertPerson(persona)
+      await loadMyPurchases()
+      return true
+    } catch (err) {
+      if (isError(err, 'ERR-021')) return false
+      throw err
+    }
+  }
   const createPin = async (id, pin) => {
     const updated = await setUserPin(id, pin)
-    setPersons(prev => prev.map(p => (p.id === id ? { ...p, ...updated } : p)))
+    upsertPerson(updated)
+    await loadMyPurchases()
   }
   const resetPin = async (id) => {
     const updated = await resetUserPin(id)
     setPersons(prev => prev.map(p => (p.id === id ? { ...p, ...updated } : p)))
   }
 
+  /**
+   * Con el PIN de Mari validado ya hay token de admin: recargamos la lista completa
+   * de personas (con teléfonos, pendientes e inactivas) y TODAS las compras, que la
+   * sesión de empleado no tiene permiso para ver.
+   */
+  const unlockAdmin = async () => {
+    setIsAdminUnlocked(true)
+    try {
+      const [personas, compras] = await Promise.all([
+        getPersonas({ admin: true }),
+        getCompras(null, { admin: true }),
+      ])
+      setPersons(personas)
+      setPurchases(compras)
+    } catch (err) {
+      console.error('No se pudieron cargar los datos del panel:', err)
+    }
+  }
+
   const handleSetView = (v) => {
-    if (v !== 'marianita') setIsAdminUnlocked(false)
+    // Al salir del panel se cierra la sesión de admin y se vuelve a los datos
+    // propios: no queremos las compras de todo el mundo en memoria de más.
+    if (v !== 'marianita' && isAdminUnlocked) {
+      setIsAdminUnlocked(false)
+      setAdminToken(null)
+      getPersonas().then(setPersons).catch(() => {})
+      if (personId) loadMyPurchases()
+    }
     setView(v)
   }
 
@@ -240,7 +302,7 @@ export default function App() {
                 onDeactivatePerson={deactivatePerson}
                 onReactivatePerson={reactivatePerson}
               />
-            : <PinGate onSuccess={() => setIsAdminUnlocked(true)} />
+            : <PinGate onSuccess={unlockAdmin} />
         )}
       </main>
       <BottomNav view={view} setView={handleSetView} />
@@ -249,7 +311,8 @@ export default function App() {
           persons={activePersons}
           value={personId}
           onChange={(id) => { login(id); setIsPickerOpen(false) }}
-          onClose={() => { if (currentPerson) setIsPickerOpen(false) }}
+          onClose={() => setIsPickerOpen(false)}
+          canClose={!!currentPerson}
           onRegister={handleRegister}
           onVerifyPin={verifyPin}
           onSetPin={createPin}

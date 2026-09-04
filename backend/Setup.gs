@@ -53,18 +53,53 @@ function setupSpreadsheet() {
   const def1 = ss.getSheetByName('Sheet1') || ss.getSheetByName('Hoja 1') || ss.getSheetByName('Hoja1')
   if (def1 && def1.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(def1)
 
-  seedSeguridad()
+  const pinNuevo = seedSeguridad()
 
-  SpreadsheetApp.getActiveSpreadsheet().toast('Setup completo ✔', 'Snacks Marianita', 5)
+  const aviso = pinNuevo
+    ? 'Setup completo ✔ — PIN de Mari: ' + pinNuevo + ' (anótalo ya, no se vuelve a mostrar)'
+    : 'Setup completo ✔'
+  SpreadsheetApp.getActiveSpreadsheet().toast(aviso, 'Snacks Marianita', 30)
 }
 
-/** Crea el PIN por defecto (1234) solo si no existe aún. */
+/**
+ * Siembra la seguridad inicial si aún no existe:
+ *  - un PIN de administración ALEATORIO, guardado solo como hash
+ *  - el secreto con el que se firman los tokens de sesión
+ *
+ * El PIN generado se muestra UNA vez (toast + registro de ejecución): hay que
+ * anotarlo en ese momento, porque después ya no es recuperable. Para cambiarlo,
+ * usa cambiarPinAdmin() más abajo.
+ *
+ * Antes se sembraba '1234' en texto plano en la hoja: cualquiera con acceso al
+ * documento veía el PIN del panel.
+ */
 function seedSeguridad() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Seguridad')
-  const yaTienePin = sh.getLastRow() > 1 &&
-    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().some(r => String(r[0]) === 'pin')
-  if (yaTienePin) return
-  sh.appendRow(['pin', '1234'])
+  getSessionSecret()   // lo crea si falta
+
+  const yaTienePin = !!getConfig('pinHash') || !!getConfig('pin')
+  if (yaTienePin) return null
+
+  const pin = String(Math.floor(Math.random() * 10000)).padStart(4, '0')
+  const salt = makeSalt()
+  setConfig('pinSalt', salt)
+  setConfig('pinHash', hashPin(pin, salt))
+
+  Logger.log('PIN de administración generado: ' + pin + ' — anótalo, no se puede recuperar.')
+  return pin
+}
+
+/**
+ * Cambia el PIN del panel a mano desde el editor de Apps Script.
+ * Edítalo aquí, ejecuta la función y vuelve a dejarlo vacío.
+ */
+function cambiarPinAdmin() {
+  const NUEVO_PIN = ''   // ← escribe aquí 4 dígitos y ejecuta
+  if (!/^\d{4}$/.test(NUEVO_PIN)) fail('ERR-020')
+  const salt = makeSalt()
+  setConfig('pinSalt', salt)
+  setConfig('pinHash', hashPin(NUEVO_PIN, salt))
+  deleteConfig('pin')
+  SpreadsheetApp.getActiveSpreadsheet().toast('PIN de administración actualizado ✔', 'Snacks Marianita', 5)
 }
 
 

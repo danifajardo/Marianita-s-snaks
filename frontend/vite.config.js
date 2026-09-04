@@ -7,9 +7,6 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.js',
-    env: {
-      VITE_PIN_MARIANITA: '1234',
-    },
     coverage: {
       provider: 'v8',
       include: ['src/**'],

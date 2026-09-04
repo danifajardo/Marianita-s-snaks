@@ -3,7 +3,6 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import MarianitaPanel from '../../views/MarianitaPanel'
 
-vi.mock('lucide')
 vi.mock('react-i18next')
 
 const products = [

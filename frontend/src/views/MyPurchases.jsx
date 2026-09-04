@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
-import { createIcons, icons } from 'lucide'
+import { useState } from 'react'
+import { Icon } from '../icons'
 import { useTranslation } from 'react-i18next'
 import { formatCOP, relativeDate, effectiveMethod, lineTotal } from '../data'
-import { MetodoBadge } from '../Components'
+import { MetodoBadge, Modal } from '../Components'
+import { errorText } from '../errors'
 
 export default function MyPurchases({ purchases, products, person, onSettle }) {
   const { t, i18n } = useTranslation()
@@ -12,7 +13,6 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
   const [pending, setPending] = useState(null)   // { ids, method, amount } pendiente de confirmar
   const [payError, setPayError] = useState('')
 
-  useEffect(() => { createIcons({ icons }) }, [filter, isPayOpen, pending, purchases])
 
   const priceOf     = (c) => lineTotal(c, products)
   const myPurchases = purchases.filter(c => c.personId === person.id)
@@ -34,13 +34,14 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
       await onSettle(pending.ids, pending.method)
       setPending(null)
     } catch (err) {
-      setPayError(err?.message || t('myPurchases.payError'))
+      setPayError(errorText(err, t))
     } finally {
       setPaying(false)
     }
   }
 
-  const groups = useMemo(() => {
+  // Sin useMemo: `filtered` se recrea en cada render, así que la caché nunca acertaba.
+  const groups = (() => {
     const g = {}
     filtered.forEach(c => {
       const key = relativeDate(c.date, t, i18n.language)
@@ -48,7 +49,7 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
       g[key].push(c)
     })
     return g
-  }, [filtered, i18n.language])
+  })()
 
   return (
     <div className="view">
@@ -84,7 +85,7 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
 
       {filtered.length === 0 ? (
         <div className="empty">
-          <div className="empty-emoji">😴</div>
+          <div className="empty-emoji"><Icon name="shopping-bag" /></div>
           <h2>{t('myPurchases.emptyTitle')}</h2>
           <p>{t('myPurchases.emptyDesc')}</p>
         </div>
@@ -116,15 +117,7 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
       )}
 
       {isPayOpen && myDebt.length > 0 && (
-        <div className="modal-overlay" onClick={closePay}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>{t('myPurchases.payTitle')}</h2>
-              <button className="icon-btn" onClick={closePay}>
-                <i data-lucide="x"></i>
-              </button>
-            </div>
-
+        <Modal title={t('myPurchases.payTitle')} onClose={closePay}>
             {pending ? (
               <div className="confirm-identity">
                 <h2 className="confirm-identity-q">
@@ -179,8 +172,7 @@ export default function MyPurchases({ purchases, products, person, onSettle }) {
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

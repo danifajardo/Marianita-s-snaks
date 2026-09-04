@@ -1,7 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
-import { createIcons, icons } from 'lucide'
+import { useState, useMemo } from 'react'
+import { Icon } from '../icons'
 import { useTranslation } from 'react-i18next'
 import { formatCOP, LOW_STOCK } from '../data'
+import { errorText } from '../errors'
+import { Modal } from '../Components'
 
 export default function RegisterPurchase({ products, person, onConfirm }) {
   const { t } = useTranslation()
@@ -13,7 +15,6 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
   const [saving, setSaving]           = useState(false)
   const [saveError, setSaveError]     = useState('')
 
-  useEffect(() => { createIcons({ icons }) }, [cart, method, isConfirmed, isModalOpen, searchQuery])
 
   const activeProducts = products.filter(p => p.active)
 
@@ -62,7 +63,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
       setIsConfirmed(true)
       setTimeout(() => { setCart({}); setIsConfirmed(false) }, 2400)
     } catch (err) {
-      setSaveError(err?.message || t('register.saveError'))
+      setSaveError(errorText(err, t))
     } finally {
       setSaving(false)
     }
@@ -72,7 +73,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
     return (
       <div className="confirm-screen">
         <div className="confirm-pop">
-          <div className="confirm-circle"><i data-lucide="check"></i></div>
+          <div className="confirm-circle"><Icon name="check" /></div>
           <h1>{t('register.done')}</h1>
           <p className="confirm-msg">{t('register.recorded', { name: person.name.split(' ')[0] })}</p>
           <p className="confirm-amt">
@@ -89,7 +90,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
       <p className="view-sub">{t('register.subtitle')}</p>
 
       <div className="search-bar">
-        <i data-lucide="search" className="search-bar-icon"></i>
+        <Icon name="search" className="search-bar-icon" />
         <input
           className="search-bar-input"
           type="text"
@@ -99,14 +100,14 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
         />
         {searchQuery && (
           <button className="search-bar-clear icon-btn" onClick={() => setSearchQuery('')}>
-            <i data-lucide="x"></i>
+            <Icon name="x" />
           </button>
         )}
       </div>
 
       {filteredProducts.length === 0 ? (
         <div className="empty">
-          <div className="empty-emoji">🔍</div>
+          <div className="empty-emoji"><Icon name="search-x" /></div>
           <h2>{t('register.noResults')}</h2>
           <p>{t('register.noResultsDesc', { query: searchQuery })}</p>
         </div>
@@ -115,27 +116,36 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
           {filteredProducts.map(p => {
             const qty = cart[p.id] || 0
             return (
-              <button
-                key={p.id}
-                className={'product-card ' + (qty > 0 ? 'selected' : '')}
-                onClick={() => toggle(p.id)}
-              >
+              <div key={p.id} className="product-cell">
+                <button
+                  className={'product-card ' + (qty > 0 ? 'selected' : '')}
+                  onClick={() => toggle(p.id)}
+                  aria-label={t('register.addOne', { name: p.name })}
+                >
+                  {typeof p.stock === 'number' && p.stock <= 0 && (
+                    <span className="stock-badge out">{t('register.outOfStock')}</span>
+                  )}
+                  {typeof p.stock === 'number' && p.stock > 0 && p.stock <= LOW_STOCK && (
+                    <span className="stock-badge low">{t('register.lowStock', { count: p.stock })}</span>
+                  )}
+                  <span className="product-emoji" aria-hidden="true">{p.emoji}</span>
+                  <span className="product-name">{p.name}</span>
+                  <span className="product-price">{formatCOP(p.price)}</span>
+                </button>
                 {qty > 0 && (
                   <span className="qty-bubble">
-                    {qty}
-                    <span className="qty-minus" onClick={(e) => decrease(p.id, e)}>−</span>
+                    <span className="qty-count" aria-hidden="true">{qty}</span>
+                    <button
+                      type="button"
+                      className="qty-minus"
+                      onClick={(e) => decrease(p.id, e)}
+                      aria-label={t('register.removeOne', { name: p.name })}
+                    >
+                      −
+                    </button>
                   </span>
                 )}
-                {typeof p.stock === 'number' && p.stock <= 0 && (
-                  <span className="stock-badge out">{t('register.outOfStock')}</span>
-                )}
-                {typeof p.stock === 'number' && p.stock > 0 && p.stock <= LOW_STOCK && (
-                  <span className="stock-badge low">{t('register.lowStock', { count: p.stock })}</span>
-                )}
-                <span className="product-emoji">{p.emoji}</span>
-                <span className="product-name">{p.name}</span>
-                <span className="product-price">{formatCOP(p.price)}</span>
-              </button>
+              </div>
             )
           })}
         </div>
@@ -165,15 +175,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
       )}
 
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>{t('register.confirmTitle')}</h2>
-              <button className="icon-btn" onClick={() => setIsModalOpen(false)}>
-                <i data-lucide="x"></i>
-              </button>
-            </div>
-
+        <Modal title={t('register.confirmTitle')} onClose={() => setIsModalOpen(false)}>
             <div className="confirm-modal">
               <ul className="confirm-modal-list">
                 {cartItems.map(item => (
@@ -206,8 +208,7 @@ export default function RegisterPurchase({ products, person, onConfirm }) {
                 {t('register.review')}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

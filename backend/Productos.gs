@@ -25,8 +25,8 @@ function listProductos() {
 function createProducto(data) {
   const name = String(data.name || '').trim()
   const price = parseInt(String(data.price).replace(/\D/g, ''), 10)
-  if (!name) throw new Error('Falta el nombre del producto')
-  if (isNaN(price) || price <= 0) throw new Error('Precio inválido')
+  if (!name) fail('ERR-040')
+  if (isNaN(price) || price <= 0) fail('ERR-041')
 
   const producto = {
     id:     'p-' + Date.now(),
@@ -42,12 +42,12 @@ function createProducto(data) {
 
 function updateProducto(data) {
   const id = String(data.id || '')
-  if (!id) throw new Error('Falta el id del producto')
+  if (!id) fail('ERR-042')
 
   const patch = {}
   if (data.price !== undefined) {
     const price = parseInt(String(data.price).replace(/\D/g, ''), 10)
-    if (isNaN(price) || price <= 0) throw new Error('Precio inválido')
+    if (isNaN(price) || price <= 0) fail('ERR-041')
     patch.price = price
   }
   if (data.active !== undefined) patch.active = toBool(data.active)
@@ -55,7 +55,7 @@ function updateProducto(data) {
   if (data.emoji !== undefined)  patch.emoji = String(data.emoji)
   if (data.stock !== undefined)  patch.stock = Math.trunc(Number(data.stock) || 0)
 
-  if (Object.keys(patch).length === 0) throw new Error('Nada que actualizar')
+  if (Object.keys(patch).length === 0) fail('ERR-043')
 
   return mapProducto(updateRowById(SHEETS.PRODUCTOS, id, patch))
 }

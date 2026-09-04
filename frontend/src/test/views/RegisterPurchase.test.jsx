@@ -3,7 +3,6 @@ import { render, screen, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RegisterPurchase from '../../views/RegisterPurchase'
 
-vi.mock('lucide')
 vi.mock('react-i18next')
 
 const products = [
