@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, Fragment } from 'react'
-import { createIcons, icons } from 'lucide'
+import { useState, Fragment } from 'react'
+import { Icon } from '../icons'
 import { useTranslation } from 'react-i18next'
 import { formatCOP, effectiveMethod, lineTotal, relativeDate, LOW_STOCK } from '../data'
 import { MetodoBadge } from '../Components'
@@ -18,7 +18,6 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
   const [newStock, setNewStock]   = useState('')
   const [expandedDay, setExpandedDay] = useState(null)
 
-  useEffect(() => { createIcons({ icons }) }, [range, tab, editingId, stockEditId, isAdding, expandedDay, products, purchases])
 
   const inRange = (iso) => {
     const days = (new Date() - new Date(iso)) / (1000 * 60 * 60 * 24)
@@ -39,7 +38,8 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
 
   // "Quién debe" solo cuenta lo fiado pendiente (effectiveMethod === 'debt');
   // lo pagado (efectivo, transferencia o deuda ya saldada) no aparece.
-  const debts = useMemo(() => {
+  // Sin useMemo: `filtered` se recrea en cada render, así que la caché nunca acertaba.
+  const debts = (() => {
     const amountMap = {}
     filtered.filter(c => effectiveMethod(c) === 'debt').forEach(c => {
       amountMap[c.personId] = (amountMap[c.personId] || 0) + purchaseTotal(c)
@@ -48,10 +48,10 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
       .map(p => ({ person: p, total: amountMap[p.id] || 0 }))
       .filter(x => x.total > 0)
       .sort((a, b) => b.total - a.total)
-  }, [filtered, persons, products])
+  })()
 
   // Ventas agrupadas por día (calendario local), más reciente primero.
-  const salesByDay = useMemo(() => {
+  const salesByDay = (() => {
     const map = {}
     filtered.forEach(c => {
       const d = new Date(c.date)
@@ -62,7 +62,7 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
       map[key].items.push(c)
     })
     return Object.values(map).sort((a, b) => new Date(b.date) - new Date(a.date))
-  }, [filtered, products])
+  })()
 
   const activeUsers = persons.filter(p => p.status === 'active')
 
@@ -136,16 +136,16 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
 
       <div className="tabs">
         <button className={tab === 'summary' ? 'on' : ''} onClick={() => setTab('summary')}>
-          <i data-lucide="users"></i>{t('panel.whoOwes')}
+          <Icon name="users" />{t('panel.whoOwes')}
         </button>
         <button className={tab === 'sales' ? 'on' : ''} onClick={() => setTab('sales')}>
-          <i data-lucide="receipt"></i>{t('panel.sales')}
+          <Icon name="receipt" />{t('panel.sales')}
         </button>
         <button className={tab === 'products' ? 'on' : ''} onClick={() => setTab('products')}>
-          <i data-lucide="package"></i>{t('panel.products')}
+          <Icon name="package" />{t('panel.products')}
         </button>
         <button className={tab === 'requests' ? 'on' : ''} onClick={() => setTab('requests')}>
-          <i data-lucide="users-round"></i>{t('panel.users')}
+          <Icon name="users-round" />{t('panel.users')}
           {pendingPersons.length > 0 && <span className="req-badge">{pendingPersons.length}</span>}
         </button>
       </div>
@@ -180,7 +180,7 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
           <div className="section-label">{t('panel.activeSection')}</div>
           {activeUsers.length === 0 ? (
             <div className="empty small">
-              <div className="empty-emoji">👥</div>
+              <div className="empty-emoji"><Icon name="users" /></div>
               <h2>{t('panel.noUsers')}</h2>
             </div>
           ) : (
@@ -231,7 +231,7 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
         <div className="card">
           {salesByDay.length === 0 ? (
             <div className="empty small">
-              <div className="empty-emoji">🧾</div>
+              <div className="empty-emoji"><Icon name="receipt" /></div>
               <h2>{t('panel.noSales')}</h2>
             </div>
           ) : (
@@ -299,7 +299,7 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
         <div className="card">
           {debts.length === 0 ? (
             <div className="empty small">
-              <div className="empty-emoji">🌤️</div>
+              <div className="empty-emoji"><Icon name="check-check" /></div>
               <h2>{t('panel.upToDate')}</h2>
               <p>{t('panel.noDebts')}</p>
             </div>
@@ -361,13 +361,13 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
                   ) : (
                     <div className="prod-controls">
                       <button className="prod-price" onClick={() => startEdit(p)}>
-                        {formatCOP(p.price)} <i data-lucide="pencil"></i>
+                        {formatCOP(p.price)} <Icon name="pencil" />
                       </button>
                       <button
                         className={'prod-stock' + (p.stock <= 0 ? ' out' : p.stock <= LOW_STOCK ? ' low' : '')}
                         onClick={() => startEditStock(p)}
                       >
-                        {t('panel.stockLabel', { count: p.stock ?? 0 })} <i data-lucide="pencil"></i>
+                        {t('panel.stockLabel', { count: p.stock ?? 0 })} <Icon name="pencil" />
                       </button>
                     </div>
                   )}
@@ -390,7 +390,7 @@ export default function MarianitaPanel({ purchases, products, persons, pendingPe
             </div>
           ) : (
             <button className="btn-add-prod" onClick={() => setIsAdding(true)}>
-              <i data-lucide="plus"></i> {t('panel.addProduct')}
+              <Icon name="plus" /> {t('panel.addProduct')}
             </button>
           )}
         </div>

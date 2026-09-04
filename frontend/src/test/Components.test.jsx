@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Header, BottomNav, MetodoBadge, PersonPicker, PinGate } from '../Components'
 import * as api from '../api'
 
-vi.mock('lucide')
 vi.mock('react-i18next')
 vi.mock('../api')
 
@@ -172,7 +171,7 @@ describe('PersonPicker', () => {
     // identidad + PIN en una sola pantalla
     await user.click(screen.getByText('#001'))
     expect(screen.getByText('Are you Ana?')).toBeInTheDocument()
-    await user.type(screen.getByPlaceholderText('• • • •'), '1234')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
     await user.click(screen.getByText('Enter'))
     expect(onVerifyPin).toHaveBeenCalledWith('u-1', '1234')
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('u-1'))
@@ -186,7 +185,7 @@ describe('PersonPicker', () => {
     const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
     render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onVerifyPin={onVerifyPin} />)
     await user.click(screen.getByText('#001'))
-    await user.type(screen.getByPlaceholderText('• • • •'), '0000')
+    await user.type(screen.getByPlaceholderText('4 digits'), '0000')
     await user.click(screen.getByText('Enter'))
     await waitFor(() => expect(screen.getByText('Incorrect PIN, try again')).toBeInTheDocument())
     expect(onChange).not.toHaveBeenCalled()
@@ -199,8 +198,9 @@ describe('PersonPicker', () => {
     const onSetPin = vi.fn().mockResolvedValue({})
     const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: false }]
     render(<PersonPicker {...defaultProps} persons={persons} onChange={onChange} onClose={onClose} onSetPin={onSetPin} />)
-    await user.click(screen.getByText('#001'))
-    await user.type(screen.getByPlaceholderText('• • • •'), '4321')
+    await user.click(screen.getByText('Ana'))
+    await user.type(screen.getByPlaceholderText('4 digits'), '4321')
+    await user.type(screen.getByPlaceholderText('The same 4 digits'), '4321')
     await user.click(screen.getByText('Create PIN'))
     expect(onSetPin).toHaveBeenCalledWith('u-1', '4321')
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('u-1'))
@@ -265,6 +265,7 @@ describe('PersonPicker', () => {
     await user.type(screen.getByPlaceholderText('e.g. Maria Lopez'), 'Carlos Ruiz')
     await user.type(screen.getByPlaceholderText('e.g. 3001234567'), '3001234567')
     await user.type(screen.getByPlaceholderText('4 digits'), '1234')
+    await user.type(screen.getByPlaceholderText('The same 4 digits'), '1234')
     // paso 1: revisión
     await user.click(screen.getByText('Register me'))
     expect(onRegister).not.toHaveBeenCalled()
@@ -289,16 +290,136 @@ describe('PersonPicker', () => {
   })
 })
 
+const propsPicker = {
+  persons: [],
+  value: null,
+  onChange: vi.fn(),
+  onClose: vi.fn(),
+  onRegister: vi.fn(),
+  onVerifyPin: vi.fn(),
+  onSetPin: vi.fn(),
+}
+
+describe('PersonPicker — PIN de dos pasos', () => {
+  const sinPin = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: false }]
+  const conPin = [{ id: 'u-1', employeeId: '001', name: 'Ana', initial: 'A', hasPin: true }]
+
+  it('al crear el PIN no lo guarda si la repetición no coincide', async () => {
+    const user = userEvent.setup()
+    const onSetPin = vi.fn().mockResolvedValue({})
+    render(<PersonPicker {...propsPicker} persons={sinPin} onSetPin={onSetPin} />)
+    await user.click(screen.getByText('Ana'))
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
+    await user.type(screen.getByPlaceholderText('The same 4 digits'), '1235')
+    await user.click(screen.getByText('Create PIN'))
+    expect(await screen.findByText('The two PINs do not match')).toBeInTheDocument()
+    expect(onSetPin).not.toHaveBeenCalled()
+  })
+
+  it('al entrar con un PIN ya existente no pide repetirlo', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={conPin} />)
+    await user.click(screen.getByText('Ana'))
+    expect(screen.queryByPlaceholderText('The same 4 digits')).not.toBeInTheDocument()
+  })
+
+  it('el ojo alterna entre ocultar y mostrar el PIN', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={conPin} />)
+    await user.click(screen.getByText('Ana'))
+    const campo = screen.getByPlaceholderText('4 digits')
+    expect(campo).toHaveAttribute('type', 'password')
+    await user.click(screen.getByLabelText('Show PIN'))
+    expect(campo).toHaveAttribute('type', 'text')
+    await user.click(screen.getByLabelText('Hide PIN'))
+    expect(campo).toHaveAttribute('type', 'password')
+  })
+
+  it('ofrece "olvidé mi PIN" y explica que solo Mari puede reiniciarlo', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={conPin} />)
+    await user.click(screen.getByText('Ana'))
+    await user.click(screen.getByText('I forgot my PIN'))
+    expect(screen.getByText('Forgot your PIN?')).toBeInTheDocument()
+    expect(screen.getByText('Ask Marianita to reset it.')).toBeInTheDocument()
+    await user.click(screen.getByText('Got it'))
+    expect(screen.getByText('Are you Ana?')).toBeInTheDocument()
+  })
+
+  it('no ofrece "olvidé mi PIN" a quien todavía no tiene uno', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={sinPin} />)
+    await user.click(screen.getByText('Ana'))
+    expect(screen.queryByText('I forgot my PIN')).not.toBeInTheDocument()
+  })
+
+  it('traduce por código el error que devuelve el backend al crear el PIN', async () => {
+    const user = userEvent.setup()
+    const onSetPin = vi.fn().mockRejectedValue(
+      Object.assign(new Error('Demasiados intentos'), { code: 'ERR-024' }))
+    render(<PersonPicker {...propsPicker} persons={sinPin} onSetPin={onSetPin} />)
+    await user.click(screen.getByText('Ana'))
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
+    await user.type(screen.getByPlaceholderText('The same 4 digits'), '1234')
+    await user.click(screen.getByText('Create PIN'))
+    expect(await screen.findByText(/Too many failed attempts/)).toBeInTheDocument()
+  })
+})
+
+describe('PersonPicker — lista de personas', () => {
+  const muchas = Array.from({ length: 8 }, (_, i) => ({
+    id: 'u-' + i, employeeId: '00' + i, name: 'Persona ' + i, initial: 'P', hasPin: true,
+  }))
+
+  it('muestra el nombre además del número de empleado', () => {
+    const persons = [{ id: 'u-1', employeeId: '001', name: 'Ana García', initial: 'A', hasPin: true }]
+    render(<PersonPicker {...propsPicker} persons={persons} />)
+    expect(screen.getByText('Ana García')).toBeInTheDocument()
+    expect(screen.getByText('#001')).toBeInTheDocument()
+  })
+
+  it('sin buscador cuando hay pocas personas', () => {
+    render(<PersonPicker {...propsPicker} persons={muchas.slice(0, 3)} />)
+    expect(screen.queryByPlaceholderText('Search by name or number')).not.toBeInTheDocument()
+  })
+
+  it('filtra por nombre cuando la lista es larga', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={muchas} />)
+    await user.type(screen.getByPlaceholderText('Search by name or number'), 'Persona 3')
+    expect(screen.getByText('Persona 3')).toBeInTheDocument()
+    expect(screen.queryByText('Persona 4')).not.toBeInTheDocument()
+  })
+
+  it('filtra también por número de empleado', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={muchas} />)
+    await user.type(screen.getByPlaceholderText('Search by name or number'), '005')
+    expect(screen.getByText('Persona 5')).toBeInTheDocument()
+    expect(screen.queryByText('Persona 2')).not.toBeInTheDocument()
+  })
+
+  it('avisa cuando la búsqueda no encuentra a nadie', async () => {
+    const user = userEvent.setup()
+    render(<PersonPicker {...propsPicker} persons={muchas} />)
+    await user.type(screen.getByPlaceholderText('Search by name or number'), 'zzz')
+    expect(screen.getByText('Nobody matches that search.')).toBeInTheDocument()
+  })
+})
+
 // ─── PinGate ──────────────────────────────────────────────────────────────────
 
 describe('PinGate', () => {
   beforeEach(() => {
-    vi.mocked(api.verificarPin).mockImplementation(pin => Promise.resolve(pin === '1234'))
+    vi.mocked(api.verificarPin).mockImplementation(pin =>
+      pin === '1234'
+        ? Promise.resolve(true)
+        : Promise.reject(Object.assign(new Error('PIN incorrecto'), { code: 'ERR-025' })))
   })
 
   it('muestra el campo de PIN y el botón de entrar', () => {
     render(<PinGate onSuccess={vi.fn()} />)
-    expect(screen.getByPlaceholderText('• • • •')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('4 digits')).toBeInTheDocument()
     expect(screen.getByText('Enter')).toBeInTheDocument()
   })
 
@@ -306,7 +427,7 @@ describe('PinGate', () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
     render(<PinGate onSuccess={onSuccess} />)
-    await user.type(screen.getByPlaceholderText('• • • •'), '1234')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234')
     await user.click(screen.getByText('Enter'))
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
@@ -315,7 +436,7 @@ describe('PinGate', () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
     render(<PinGate onSuccess={onSuccess} />)
-    await user.type(screen.getByPlaceholderText('• • • •'), '0000')
+    await user.type(screen.getByPlaceholderText('4 digits'), '0000')
     await user.click(screen.getByText('Enter'))
     await waitFor(() => expect(onSuccess).not.toHaveBeenCalled())
   })
@@ -323,24 +444,35 @@ describe('PinGate', () => {
   it('muestra el mensaje de error con PIN incorrecto', async () => {
     const user = userEvent.setup()
     render(<PinGate onSuccess={vi.fn()} />)
-    await user.type(screen.getByPlaceholderText('• • • •'), '0000')
+    await user.type(screen.getByPlaceholderText('4 digits'), '0000')
     await user.click(screen.getByText('Enter'))
-    await waitFor(() => expect(screen.getByText('Incorrect PIN, try again')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Wrong PIN.')).toBeInTheDocument())
+  })
+
+  it('traduce el código de bloqueo por intentos (ERR-024)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.verificarPin).mockRejectedValue(
+      Object.assign(new Error('Demasiados intentos'), { code: 'ERR-024' }))
+    render(<PinGate onSuccess={vi.fn()} />)
+    await user.type(screen.getByPlaceholderText('4 digits'), '0000')
+    await user.click(screen.getByText('Enter'))
+    await waitFor(() =>
+      expect(screen.getByText(/Too many failed attempts/)).toBeInTheDocument())
   })
 
   it('limpia el campo de PIN tras un intento fallido', async () => {
     const user = userEvent.setup()
     render(<PinGate onSuccess={vi.fn()} />)
-    await user.type(screen.getByPlaceholderText('• • • •'), '9999')
+    await user.type(screen.getByPlaceholderText('4 digits'), '9999')
     await user.click(screen.getByText('Enter'))
-    await waitFor(() => expect(screen.getByPlaceholderText('• • • •')).toHaveValue(''))
+    await waitFor(() => expect(screen.getByPlaceholderText('4 digits')).toHaveValue(''))
   })
 
   it('también verifica el PIN al presionar Enter en el teclado', async () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
     render(<PinGate onSuccess={onSuccess} />)
-    await user.type(screen.getByPlaceholderText('• • • •'), '1234{Enter}')
+    await user.type(screen.getByPlaceholderText('4 digits'), '1234{Enter}')
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 })
